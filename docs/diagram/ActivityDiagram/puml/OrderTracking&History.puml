@@ -1,0 +1,29 @@
+@startuml Order_History_Only
+title Order History
+
+skinparam defaultTextAlignment center
+
+|Customer|
+start
+:Open Order History;
+
+|Backend|
+:Get User Orders;
+
+|Frontend|
+:Display Order List;
+
+|Customer|
+:Select Past Order;
+
+|Backend|
+:Retrieve Order Details;
+
+|Frontend|
+:Display Order Information;
+
+|Customer|
+:View Order Details;
+stop
+
+@enduml

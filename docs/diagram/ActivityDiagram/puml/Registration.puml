@@ -1,0 +1,40 @@
+@startuml User Registration
+
+|Customer|
+start
+
+:Open Registration Page;
+:Enter Registration Information;
+
+|Frontend|
+:Validate Form;
+
+if (Input Valid?) then (Yes)
+
+    |Backend|
+    :Check Existing Email;
+
+    if (Email Exists?) then (Yes)
+
+        |Frontend|
+        :Display Email Already Exists;
+        stop
+
+    else (No)
+
+        :Create Account;
+
+        |Customer|
+        :Registration Successful;
+        stop
+
+    endif
+
+else (No)
+
+    :Display Validation Error;
+    stop
+
+endif
+
+@enduml

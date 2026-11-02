@@ -1,0 +1,34 @@
+@startuml Menu_Management_Flow
+title Menu Management Flow
+
+skinparam linetype ortho
+skinparam conditionStyle inside diamond
+skinparam defaultTextAlignment center
+
+|Store Manager|
+start
+:View Product List;
+
+if (Action?) then (Add)
+    :Enter Product Information;
+    |Backend|
+    :Save Product;
+elseif (Action?) then (Edit)
+    |Store Manager|
+    :Select Product to Edit;
+    :Modify Product Information;
+    |Backend|
+    :Update Product;
+else (Delete)
+    |Store Manager|
+    :Select Product to Delete;
+    :Confirm Delete;
+    |Backend|
+    :Delete Product;
+endif
+
+|Frontend|
+:Display Success Message;
+stop
+
+@enduml

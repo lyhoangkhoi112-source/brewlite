@@ -1,0 +1,33 @@
+@startuml Browse & Customize Beverage
+
+|Customer|
+
+start
+
+:Browse Menu;
+
+:Select Beverage;
+
+|Frontend|
+
+:Load Product Details;
+
+:Display Product Information;
+
+|Customer|
+
+:Customize Options (Size, Sugar, Ice, Toppings);
+
+:Add To Cart;
+
+|Backend|
+
+:Update Shopping Cart;
+
+|Frontend|
+
+:Display Updated Cart;
+
+stop
+
+@enduml

@@ -1,0 +1,17 @@
+@startuml Inventory Management Flow
+
+skinparam defaultTextAlignment center
+
+|Store Manager|
+start
+:View Inventory;
+:Select Item;
+:Update Stock Quantity;
+
+|Backend|
+:Update Inventory;
+
+|Frontend|
+:Display Success Message;
+stop
+@enduml
