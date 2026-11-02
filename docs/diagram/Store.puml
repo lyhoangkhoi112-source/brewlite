@@ -1,0 +1,94 @@
+@startuml SEQUENCE 02 - QUẢN LÝ GIỎ HÀNG
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor Customer as C
+participant "Giao diện\nNext.js UI" as UI
+participant "API\nNestJS API" as API
+database "Database" as DB
+
+== Truy cập giỏ hàng ==
+
+C -> UI: Mở giỏ hàng
+UI -> API: GET /cart
+activate API
+
+API -> API: Kiểm tra JWT
+API -> DB: Lấy giỏ hàng của khách
+DB --> API: Danh sách CartItem
+
+API --> UI: Trả về giỏ hàng
+deactivate API
+
+UI --> C: Hiển thị giỏ hàng
+
+== Thêm sản phẩm ==
+
+C -> UI: Chọn sản phẩm và số lượng
+UI -> API: POST /cart/items\n(productId, quantity, options)
+activate API
+
+API -> API: Kiểm tra JWT
+API -> DB: Kiểm tra sản phẩm và tồn kho
+DB --> API: Thông tin sản phẩm
+
+alt Sản phẩm không tồn tại hoặc hết hàng
+    API --> UI: Thông báo không thể thêm
+    UI --> C: Hiển thị lỗi
+else Sản phẩm hợp lệ
+    API -> DB: Thêm CartItem hoặc cập nhật số lượng
+    DB --> API: Xác nhận cập nhật
+    API -> DB: Tính tổng tiền giỏ hàng
+    DB --> API: Tổng tiền
+    API --> UI: Cập nhật giỏ hàng thành công
+    UI --> C: Hiển thị giỏ hàng mới
+end
+
+deactivate API
+
+== Chỉnh sửa số lượng ==
+
+C -> UI: Thay đổi số lượng sản phẩm
+UI -> API: PATCH /cart/items/{itemId}
+activate API
+
+API -> API: Kiểm tra JWT
+API -> DB: Kiểm tra CartItem và tồn kho
+DB --> API: Kết quả kiểm tra
+
+alt Số lượng không hợp lệ
+    API --> UI: Trả về lỗi số lượng
+    UI --> C: Thông báo lỗi
+else Số lượng hợp lệ
+    API -> DB: Cập nhật số lượng
+    API -> DB: Tính lại tổng tiền
+    DB --> API: Giỏ hàng mới
+    API --> UI: Trả về giỏ hàng
+    UI --> C: Hiển thị tổng tiền mới
+end
+
+deactivate API
+
+== Xóa sản phẩm ==
+
+C -> UI: Chọn xóa sản phẩm
+UI -> API: DELETE /cart/items/{itemId}
+activate API
+
+API -> API: Kiểm tra JWT
+API -> DB: Xóa CartItem
+DB --> API: Xác nhận xóa
+API --> UI: Cập nhật giỏ hàng
+UI --> C: Hiển thị giỏ hàng sau khi xóa
+
+deactivate API
+
+@enduml

@@ -1,0 +1,76 @@
+@startuml SEQUENCE 05 - THEO DÕI ĐƠN HÀNG
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor Customer as C
+participant "Giao diện\nNext.js UI" as UI
+participant "API\nNestJS API" as API
+database "Database" as DB
+
+== Truy cập danh sách đơn hàng ==
+
+C -> UI: Mở lịch sử đơn hàng
+UI -> API: GET /orders
+activate API
+
+API -> API: Kiểm tra JWT
+API -> DB: Truy vấn đơn hàng của khách
+DB --> API: Danh sách đơn hàng
+
+API --> UI: Trả về danh sách đơn hàng
+deactivate API
+
+UI --> C: Hiển thị lịch sử đơn hàng
+
+== Xem chi tiết đơn hàng ==
+
+C -> UI: Chọn một đơn hàng
+UI -> API: GET /orders/{orderId}
+activate API
+
+API -> API: Kiểm tra JWT
+API -> DB: Kiểm tra quyền truy cập đơn hàng
+DB --> API: Kết quả kiểm tra
+
+alt Đơn hàng không tồn tại hoặc không thuộc khách hàng
+    API --> UI: 404 Not Found
+    UI --> C: Thông báo không tìm thấy đơn hàng
+
+else Đơn hàng hợp lệ
+
+    API -> DB: Lấy thông tin Order
+    API -> DB: Lấy danh sách OrderItem
+    API -> DB: Lấy trạng thái Payment
+
+    DB --> API: Thông tin chi tiết đơn hàng
+
+    API --> UI: Trả về thông tin đơn hàng
+    UI --> C: Hiển thị mã đơn, sản phẩm,\ntổng tiền và trạng thái
+
+end
+
+deactivate API
+
+== Cập nhật trạng thái đơn hàng ==
+
+C -> UI: Làm mới trạng thái đơn hàng
+UI -> API: GET /orders/{orderId}
+activate API
+
+API -> DB: Truy vấn trạng thái mới nhất
+DB --> API: OrderStatus
+
+API --> UI: Trả về trạng thái
+UI --> C: Hiển thị trạng thái đơn hàng
+
+deactivate API
+
+@enduml

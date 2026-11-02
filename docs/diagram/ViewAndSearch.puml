@@ -1,0 +1,63 @@
+@startuml SEQUENCE 01 - XEM VÀ TÌM KIẾM SẢN PHẨM
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor Customer as C
+participant "Giao diện\nNext.js UI" as UI
+participant "API\nNestJS API" as API
+database "Database" as DB
+
+== Truy cập menu ==
+
+C -> UI: Mở trang menu
+UI -> API: GET /products
+activate API
+
+API -> DB: Truy vấn danh sách sản phẩm
+DB --> API: Danh sách sản phẩm
+API --> UI: Trả về danh sách sản phẩm
+deactivate API
+
+UI --> C: Hiển thị menu sản phẩm
+
+== Tìm kiếm sản phẩm ==
+
+C -> UI: Nhập tên sản phẩm hoặc chọn danh mục
+UI -> API: GET /products?keyword=&category=
+activate API
+
+API -> DB: Tìm kiếm theo tên hoặc danh mục
+DB --> API: Kết quả tìm kiếm
+API --> UI: Trả về kết quả
+
+deactivate API
+
+alt Có sản phẩm phù hợp
+    UI --> C: Hiển thị danh sách kết quả
+else Không tìm thấy
+    UI --> C: Thông báo không tìm thấy sản phẩm
+end
+
+== Xem chi tiết sản phẩm ==
+
+C -> UI: Chọn một sản phẩm
+UI -> API: GET /products/{productId}
+activate API
+
+API -> DB: Lấy thông tin chi tiết sản phẩm
+DB --> API: Thông tin sản phẩm
+API --> UI: Trả về chi tiết sản phẩm
+
+deactivate API
+
+UI --> C: Hiển thị tên, hình ảnh, giá,\nsize và topping
+
+@enduml
