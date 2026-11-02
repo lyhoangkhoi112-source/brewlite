@@ -1,0 +1,73 @@
+@startuml SEQUENCE 03 - QUY TRÌNH ĐẶT HÀNG
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor Customer as C
+participant "Giao diện\nNext.js UI" as UI
+participant "API\nNestJS API" as API
+database "Database" as DB
+
+== Gửi yêu cầu đặt hàng ==
+
+C -> UI: Nhấn nút Đặt hàng
+UI -> API: POST /orders\n(thông tin giỏ hàng, địa chỉ)
+activate API
+
+== Xác thực người dùng ==
+
+API -> API: Kiểm tra JWT
+
+alt JWT không hợp lệ
+    API --> UI: 401 Unauthorized
+    UI --> C: Yêu cầu đăng nhập
+else JWT hợp lệ
+
+    == Kiểm tra dữ liệu ==
+
+    API -> API: Kiểm tra dữ liệu đầu vào
+
+    alt Dữ liệu không hợp lệ
+        API --> UI: 400 Bad Request
+        UI --> C: Thông báo thông tin không hợp lệ
+    else Dữ liệu hợp lệ
+
+        == Kiểm tra sản phẩm và tồn kho ==
+
+        API -> DB: BEGIN TRANSACTION
+        API -> DB: Kiểm tra sản phẩm, giá và số lượng
+        DB --> API: Kết quả kiểm tra
+
+        alt Sản phẩm không tồn tại hoặc không đủ hàng
+            API -> DB: ROLLBACK
+            API --> UI: 409 Conflict
+            UI --> C: Thông báo sản phẩm không đủ hàng
+
+        else Sản phẩm hợp lệ
+
+            == Tạo đơn hàng ==
+
+            API -> DB: Tạo Order
+            API -> DB: Tạo các OrderItem
+            API -> DB: Cập nhật tồn kho
+            API -> DB: COMMIT
+
+            DB --> API: Đơn hàng được tạo thành công
+
+            API --> UI: 201 Created\n(orderId, orderCode, totalAmount)
+            UI --> C: Hiển thị thông tin đơn hàng
+
+        end
+    end
+end
+
+deactivate API
+
+@enduml
