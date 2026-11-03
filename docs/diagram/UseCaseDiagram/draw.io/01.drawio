@@ -1,0 +1,55 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="wGy986AFzrLNxadQM70g" name="01">
+    <mxGraphModel dx="1099" dy="483" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <UserObject label="" plantUmlData="{&#xa;  &quot;data&quot;: &quot;@startuml\nleft to right direction\ntitle USE CASE 01 - QUẢN LÝ TÀI KHOẢN\n\nskinparam backgroundColor white\nskinparam shadowing false\nskinparam packageStyle rectangle\nskinparam usecase {\n    BackgroundColor #EAF3FF\n    BorderColor #2874A6\n}\nskinparam actorStyle awesome\n\nactor \&quot;Khách hàng\&quot; as Customer\n\nrectangle \&quot;Hệ thống BrewLite\\n- Quản lý tài khoản -\&quot; {\n    usecase \&quot;Đăng ký tài khoản\&quot; as Register\n    usecase \&quot;Đăng nhập\&quot; as Login\n}\n\nCustomer -- Register\nCustomer -- Login\n@enduml&quot;,&#xa;  &quot;config&quot;: null&#xa;}" id="7x7u8OY4rRdxx-Z9j-T6-1">
+          <mxCell connectable="0" parent="1" style="group;transparentBounds=1;editIcon=1;lockedGroup=0;groupPadding=10;" vertex="1">
+            <mxGeometry as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="Hệ thống BrewLite&#xa;- Quản lý tài khoản -" plantUmlId="rect_0" plantUmlBaseStyle="swimlane;collapsible=0;startSize=26;fillColor=none;strokeColor=#181818;fontColor=#000000;fontSize=13;fontStyle=1;whiteSpace=wrap;shadow=0;" plantUmlBaseValue="Hệ thống BrewLite&#xa;- Quản lý tài khoản -" id="7x7u8OY4rRdxx-Z9j-T6-2">
+          <mxCell parent="7x7u8OY4rRdxx-Z9j-T6-1" style="swimlane;collapsible=0;startSize=26;fillColor=none;strokeColor=#181818;fontColor=#000000;fontSize=13;fontStyle=1;whiteSpace=wrap;shadow=0;" vertex="1">
+            <mxGeometry height="170" width="193" x="150" y="64" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="Đăng ký tài khoản" plantUmlId="uc_1" plantUmlBaseStyle="ellipse;html=1;fillColor=#EAF3FF;strokeColor=#2874A6;whiteSpace=wrap;fontColor=#000000;fontSize=14;shadow=0;" plantUmlBaseValue="Đăng ký tài khoản" id="7x7u8OY4rRdxx-Z9j-T6-3">
+          <mxCell parent="7x7u8OY4rRdxx-Z9j-T6-2" style="ellipse;html=1;fillColor=#EAF3FF;strokeColor=#2874A6;whiteSpace=wrap;fontColor=#000000;fontSize=14;shadow=0;" vertex="1">
+            <mxGeometry height="35" width="153" x="20" y="46" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="Đăng nhập" plantUmlId="uc_2" plantUmlBaseStyle="ellipse;html=1;fillColor=#EAF3FF;strokeColor=#2874A6;whiteSpace=wrap;fontColor=#000000;fontSize=14;shadow=0;" plantUmlBaseValue="Đăng nhập" id="7x7u8OY4rRdxx-Z9j-T6-4">
+          <mxCell parent="7x7u8OY4rRdxx-Z9j-T6-2" style="ellipse;html=1;fillColor=#EAF3FF;strokeColor=#2874A6;whiteSpace=wrap;fontColor=#000000;fontSize=14;shadow=0;" vertex="1">
+            <mxGeometry height="29" width="104" x="44.5" y="121" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="" plantUmlId="actor_3" plantUmlBaseStyle="shape=umlActor;html=1;fillColor=#F1F1F1;strokeColor=#181818;fontColor=#000000;fontSize=14;shadow=0;" plantUmlBaseValue="" id="7x7u8OY4rRdxx-Z9j-T6-5">
+          <mxCell parent="7x7u8OY4rRdxx-Z9j-T6-1" style="shape=umlActor;html=1;fillColor=#F1F1F1;strokeColor=#181818;fontColor=#000000;fontSize=14;shadow=0;" vertex="1">
+            <mxGeometry height="60" width="40" x="30" y="124" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="Khách hàng" plantUmlId="actorlbl_4" plantUmlBaseStyle="text;html=1;align=center;verticalAlign=middle;spacingBottom=1;fontColor=#000000;fontSize=14;part=1;" plantUmlBaseValue="Khách hàng" id="7x7u8OY4rRdxx-Z9j-T6-6">
+          <mxCell parent="7x7u8OY4rRdxx-Z9j-T6-5" style="text;html=1;align=center;verticalAlign=middle;spacingBottom=1;fontColor=#000000;fontSize=14;part=1;" vertex="1">
+            <mxGeometry height="17" width="87" x="-23.5" y="62" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="" plantUmlId="rel_5" plantUmlBaseStyle="endArrow=none;strokeColor=#181818;fontColor=#000000;fontSize=13;edgeStyle=none;rounded=0;html=1;curved=0;endSize=6;sourcePerimeterSpacing=0;targetPerimeterSpacing=0;" plantUmlBaseValue="" id="7x7u8OY4rRdxx-Z9j-T6-7">
+          <mxCell edge="1" parent="7x7u8OY4rRdxx-Z9j-T6-1" source="7x7u8OY4rRdxx-Z9j-T6-5" style="endArrow=none;strokeColor=#181818;fontColor=#000000;fontSize=13;edgeStyle=none;rounded=0;html=1;curved=0;endSize=6;sourcePerimeterSpacing=0;targetPerimeterSpacing=0;" target="7x7u8OY4rRdxx-Z9j-T6-3">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="" plantUmlId="rel_6" plantUmlBaseStyle="endArrow=none;strokeColor=#181818;fontColor=#000000;fontSize=13;edgeStyle=none;rounded=0;html=1;exitX=0.5;exitY=1.37;exitPerimeter=0;curved=0;endSize=6;sourcePerimeterSpacing=0;targetPerimeterSpacing=0;" plantUmlBaseValue="" id="7x7u8OY4rRdxx-Z9j-T6-8">
+          <mxCell edge="1" parent="7x7u8OY4rRdxx-Z9j-T6-1" source="7x7u8OY4rRdxx-Z9j-T6-5" style="endArrow=none;strokeColor=#181818;fontColor=#000000;fontSize=13;edgeStyle=none;rounded=0;html=1;exitX=0.5;exitY=1.37;exitPerimeter=0;curved=0;endSize=6;sourcePerimeterSpacing=0;targetPerimeterSpacing=0;" target="7x7u8OY4rRdxx-Z9j-T6-4">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <UserObject label="USE CASE 01 - QUẢN LÝ TÀI KHOẢN" plantUmlId="title_0" plantUmlBaseStyle="text;html=1;fillColor=none;strokeColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;verticalAlign=middle;whiteSpace=wrap;" plantUmlBaseValue="USE CASE 01 - QUẢN LÝ TÀI KHOẢN" id="7x7u8OY4rRdxx-Z9j-T6-9">
+          <mxCell parent="7x7u8OY4rRdxx-Z9j-T6-1" style="text;html=1;fillColor=none;strokeColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;verticalAlign=middle;whiteSpace=wrap;" vertex="1">
+            <mxGeometry height="24" width="265" x="42.25" y="30" as="geometry" />
+          </mxCell>
+        </UserObject>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

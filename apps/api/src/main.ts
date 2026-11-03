@@ -15,4 +15,7 @@ async function bootstrap() {
 
   app.useGlobalFilters(new ApiExceptionFilter());
 }
-bootstrap();
+void bootstrap().catch((error: unknown) => {
+  console.error('Failed to start API', error);
+  process.exitCode = 1;
+});

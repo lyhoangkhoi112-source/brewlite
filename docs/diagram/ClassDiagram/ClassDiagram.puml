@@ -1,0 +1,248 @@
+@startuml Class Diagram - Mô hình lớp nghiệp vụ BrewLite
+
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+skinparam class {
+    BackgroundColor #EAF3FF
+    BorderColor #245A81
+    FontColor #17365D
+    ArrowColor #315A7D
+}
+
+skinparam enum {
+    BackgroundColor #FFF2D8
+    BorderColor #C58B25
+    FontColor #654A13
+}
+
+hide empty members
+
+'========================================
+' ENUM - CAC TRANG THAI
+'========================================
+
+package "Enumerations - Các kiểu liệt kê" {
+
+    enum UserRole {
+        CUSTOMER
+        STAFF
+        MANAGER
+    }
+
+    enum UserStatus {
+        ACTIVE
+        INACTIVE
+        BLOCKED
+    }
+
+    enum ProductStatus {
+        AVAILABLE
+        UNAVAILABLE
+        OUT_OF_STOCK
+    }
+
+    enum OrderStatus {
+        PENDING
+        CONFIRMED
+        PREPARING
+        READY
+        DELIVERING
+        COMPLETED
+        CANCELLED
+        PAYMENT_FAILED
+    }
+
+    enum PaymentMethod {
+        MOMO
+        VNPAY
+        ZALOPAY
+    }
+
+    enum PaymentStatus {
+        PENDING
+        PROCESSING
+        SUCCESS
+        FAILED
+        REFUNDED
+    }
+
+    enum PromotionType {
+        PERCENTAGE
+        FIXED_AMOUNT
+    }
+
+    enum LoyaltyTransactionType {
+        EARN
+        REDEEM
+        EXPIRE
+        ADJUST
+    }
+}
+
+'========================================
+' CAC LOP NGHIEP VU
+'========================================
+
+package "Core Domain - Lớp nghiệp vụ" {
+
+    class User {
+        - id: UUID
+        - fullName: String
+        - email: String
+        - passwordHash: String
+        - phone: String
+        - role: UserRole
+        - status: UserStatus
+        - createdAt: DateTime
+        + register()
+        + login()
+        + updateProfile()
+    }
+
+    class Product {
+        - id: UUID
+        - name: String
+        - description: String
+        - basePrice: Decimal
+        - stockQuantity: Integer
+        - imageUrl: String
+        - status: ProductStatus
+        + getDetails()
+        + checkStock(quantity): Boolean
+        + updateStock(quantity)
+    }
+
+    class Cart {
+        - id: UUID
+        - createdAt: DateTime
+        - updatedAt: DateTime
+        + addItem(product, quantity)
+        + updateQuantity(productId, quantity)
+        + removeItem(productId)
+        + calculateTotal(): Decimal
+        + clear()
+    }
+
+    class CartItem {
+        - id: UUID
+        - quantity: Integer
+        - selectedSize: String
+        - selectedToppings: String
+        - unitPrice: Decimal
+        + calculateSubtotal(): Decimal
+    }
+
+    class Order {
+        - id: UUID
+        - orderCode: String
+        - status: OrderStatus
+        - subtotal: Decimal
+        - discountAmount: Decimal
+        - totalAmount: Decimal
+        - shippingAddress: String
+        - note: String
+        - createdAt: DateTime
+        - updatedAt: DateTime
+        + calculateTotal(): Decimal
+        + confirm()
+        + cancel()
+        + updateStatus(status)
+    }
+
+    class OrderItem {
+        - id: UUID
+        - productName: String
+        - quantity: Integer
+        - unitPrice: Decimal
+        - selectedSize: String
+        - selectedToppings: String
+        - subtotal: Decimal
+        + calculateSubtotal(): Decimal
+    }
+
+    class Payment {
+        - id: UUID
+        - transactionId: String
+        - idempotencyKey: String
+        - amount: Decimal
+        - method: PaymentMethod
+        - status: PaymentStatus
+        - failureReason: String
+        - paidAt: DateTime
+        + process()
+        + markSuccess(transactionId)
+        + markFailed(reason)
+        + refund()
+    }
+
+    class Promotion {
+        - id: UUID
+        - code: String
+        - description: String
+        - type: PromotionType
+        - value: Decimal
+        - minimumOrderAmount: Decimal
+        - startAt: DateTime
+        - endAt: DateTime
+        - usageLimit: Integer
+        - usedCount: Integer
+        - isActive: Boolean
+        + isValid(orderAmount): Boolean
+        + calculateDiscount(orderAmount): Decimal
+    }
+
+    class LoyaltyTransaction {
+        - id: UUID
+        - type: LoyaltyTransactionType
+        - points: Integer
+        - balanceAfter: Integer
+        - description: String
+        - createdAt: DateTime
+        + earnPoints()
+        + redeemPoints()
+    }
+}
+
+'========================================
+' QUAN HE GIUA CAC LOP
+'========================================
+
+' Khach hang co gio hang
+User "1" -- "0..1" Cart : sở hữu
+
+' Gio hang gom nhieu dong hang
+Cart "1" *-- "0..*" CartItem : chứa
+
+' Moi dong gio hang tham chieu mot san pham
+Product "1" -- "0..*" CartItem : được chọn
+
+' Khach hang tao don hang
+User "1" -- "0..*" Order : đặt
+
+' Don hang gom cac dong chi tiet
+Order "1" *-- "1..*" OrderItem : gồm
+
+' Moi dong don hang tham chieu san pham
+Product "1" -- "0..*" OrderItem : sản phẩm
+
+' Mot don co the co nhieu lan thu thanh toan
+Order "1" -- "0..*" Payment : thanh toán
+
+' Ma khuyen mai co the duoc ap dung cho nhieu don
+Promotion "0..1" -- "0..*" Order : áp dụng
+
+' Lich su diem thuoc ve mot tai khoan
+User "1" -- "0..*" LoyaltyTransaction : tích điểm
+
+' Ghi chu:
+' OrderItem luu ten va don gia tai thoi diem dat hang.
+' Payment.idempotencyKey giup tranh xu ly thanh toan lap.
+
+@enduml

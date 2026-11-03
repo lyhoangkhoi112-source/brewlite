@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" type="device" version="24.7.17">
+  <diagram id="04-payment" name="SEQUENCE 04 - THANH TOÁN ĐƠN HÀNG">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="SEQUENCE 04 - THANH TOÁN ĐƠN HÀNG" style="text;html=1;align=center;verticalAlign=middle;fontStyle=1;fontSize=22;fontColor=#17365D;" vertex="1" parent="1">
+          <mxGeometry x="35" y="18" width="1480" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="p0" value="Khách hàng" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF3FF;strokeColor=#245A81;fontColor=#17365D;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="22.0" y="85" width="156" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="life0" value="" style="dashed=1;endArrow=none;startArrow=none;strokeColor=#7892AA;strokeWidth=1.4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100.0" y="143" as="sourcePoint"/>
+            <mxPoint x="100.0" y="1030" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1" value="Giao diện&amp;#xa;Next.js UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF3FF;strokeColor=#245A81;fontColor=#17365D;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="359.5" y="85" width="156" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="life1" value="" style="dashed=1;endArrow=none;startArrow=none;strokeColor=#7892AA;strokeWidth=1.4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="437.5" y="143" as="sourcePoint"/>
+            <mxPoint x="437.5" y="1030" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2" value="API&amp;#xa;NestJS API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF3FF;strokeColor=#245A81;fontColor=#17365D;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="697.0" y="85" width="156" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="life2" value="" style="dashed=1;endArrow=none;startArrow=none;strokeColor=#7892AA;strokeWidth=1.4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="143" as="sourcePoint"/>
+            <mxPoint x="775.0" y="1030" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p3" value="Database" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF3FF;strokeColor=#245A81;fontColor=#17365D;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1034.5" y="85" width="156" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="life3" value="" style="dashed=1;endArrow=none;startArrow=none;strokeColor=#7892AA;strokeWidth=1.4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1112.5" y="143" as="sourcePoint"/>
+            <mxPoint x="1112.5" y="1030" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p4" value="Payment Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF3FF;strokeColor=#245A81;fontColor=#17365D;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1372.0" y="85" width="156" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="life4" value="" style="dashed=1;endArrow=none;startArrow=none;strokeColor=#7892AA;strokeWidth=1.4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1450.0" y="143" as="sourcePoint"/>
+            <mxPoint x="1450.0" y="1030" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m0" value="Chọn phương thức và xác nhận thanh toán" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100.0" y="180" as="sourcePoint"/>
+            <mxPoint x="437.5" y="180" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m1" value="POST /payments (orderId, method, idempotencyKey)" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="437.5" y="219" as="sourcePoint"/>
+            <mxPoint x="775.0" y="219" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m2" value="Kiểm tra JWT và dữ liệu" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;labelBackgroundColor=#FFFFFF;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="258" as="sourcePoint"/>
+            <mxPoint x="840.0" y="274" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m3" value="Kiểm tra đơn hàng, số tiền, idempotencyKey" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="297" as="sourcePoint"/>
+            <mxPoint x="1112.5" y="297" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m4" value="Kết quả tra cứu" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=open;endFill=0;dashed=1;strokeColor=#6B8298;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1112.5" y="336" as="sourcePoint"/>
+            <mxPoint x="775.0" y="336" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m5" value="Tạo Payment trạng thái PENDING" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="375" as="sourcePoint"/>
+            <mxPoint x="1112.5" y="375" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m6" value="Process Payment (orderId, amount, method, key)" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="414" as="sourcePoint"/>
+            <mxPoint x="1450.0" y="414" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m7" value="Payment Success + transactionId hoặc Payment Failed" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=open;endFill=0;dashed=1;strokeColor=#6B8298;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1450.0" y="453" as="sourcePoint"/>
+            <mxPoint x="775.0" y="453" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m8" value="Cập nhật Payment và Order theo kết quả" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="492" as="sourcePoint"/>
+            <mxPoint x="1112.5" y="492" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m9" value="Lưu kết quả idempotencyKey" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=block;endFill=1;strokeColor=#245A81;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="531" as="sourcePoint"/>
+            <mxPoint x="1112.5" y="531" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m10" value="Xác nhận cập nhật" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=open;endFill=0;dashed=1;strokeColor=#6B8298;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1112.5" y="570" as="sourcePoint"/>
+            <mxPoint x="775.0" y="570" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m11" value="Trả kết quả thanh toán" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=open;endFill=0;dashed=1;strokeColor=#6B8298;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="775.0" y="609" as="sourcePoint"/>
+            <mxPoint x="437.5" y="609" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m12" value="Thông báo thành công hoặc thất bại" style="edgeStyle=none;html=1;strokeWidth=1.5;endArrow=open;endFill=0;dashed=1;strokeColor=#6B8298;fontSize=12;fontColor=#243746;labelBackgroundColor=#FFFFFF;align=center;verticalAlign=bottom;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="437.5" y="648" as="sourcePoint"/>
+            <mxPoint x="100.0" y="648" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="notesTitle" value="GHI CHÚ / NHÁNH XỬ LÝ" style="text;html=1;align=left;verticalAlign=middle;fontStyle=1;fontSize=14;fontColor=#17365D;" vertex="1" parent="1">
+          <mxGeometry x="65" y="712" width="500" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="note0" value="• Đơn hàng không hợp lệ: từ chối thanh toán." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#D6A64F;fontColor=#654A13;fontSize=12;align=left;verticalAlign=middle;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="65" y="742" width="1450" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="note1" value="• idempotencyKey đã xử lý: trả kết quả cũ, không tạo giao dịch trùng." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#D6A64F;fontColor=#654A13;fontSize=12;align=left;verticalAlign=middle;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="65" y="790" width="1450" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="note2" value="• Thành công: Payment = SUCCESS, Order = CONFIRMED." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#D6A64F;fontColor=#654A13;fontSize=12;align=left;verticalAlign=middle;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="65" y="838" width="1450" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="note3" value="• Thất bại: Payment = FAILED, Order = PAYMENT_FAILED; cho phép thử lại theo chính sách hệ thống." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#D6A64F;fontColor=#654A13;fontSize=12;align=left;verticalAlign=middle;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="65" y="886" width="1450" height="40" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -78,21 +78,40 @@ applied with `npx prisma migrate dev` from this directory.
 
 ## Create an order
 
-Send a `POST` request to `/orders`. Keep the same `idempotencyKey` when retrying
-the same request; use a new UUID for a different order:
+Send a `POST` request to `/orders`. The API creates a new order for each
+successful request; it does not use an order `idempotencyKey`. Send one item for
+the quick-buy flow, or multiple items for cart checkout:
 
 ```json
 {
-  "idempotencyKey": "9a1f1713-18d7-46ea-b9f0-04f765eadd7e",
   "userId": "01234567-89ab-4cde-8f01-23456789abcd",
-  "productId": "11234567-89ab-4cde-8f01-23456789abcd",
-  "quantity": 2
+  "note": "Ít ngọt, nhận tại quầy",
+  "items": [
+    {
+      "productId": "11234567-89ab-4cde-8f01-23456789abcd",
+      "quantity": 2,
+      "selectedSize": "L",
+      "sugarLevel": "50%",
+      "iceLevel": "0%",
+      "selectedToppings": ["trân châu", "pudding"]
+    }
+  ]
 }
 ```
 
-The API looks up the product and calculates the item and order totals from its
-database price. It creates a `PENDING` order with one order item. Price, status,
-timestamps, and order codes are not accepted from the client.
+For backward compatibility, a one-product request may also use `productId` and
+`quantity` instead of `items`. The UI uses `items` for both flows so the selected
+options are preserved. `note` is optional and limited to 500 characters. A cart
+may contain multiple lines for the same product when their customizations differ;
+the API checks the combined quantity against available stock.
+
+Supported options are sizes `S`, `M`, and `L`; sugar and ice levels `0%`, `50%`,
+and `100%`; and toppings `trân châu`, `pudding`, and `thạch`. These options do
+not add a surcharge in the current version.
+
+Product prices and order totals come from the database; price, status,
+timestamps, and order codes are not accepted from the client. The response
+includes the order code, status, totals, and saved order items for confirmation.
 
 ## Deployment
 

@@ -120,6 +120,8 @@ model CartItem {
   product          Product  @relation(fields: [productId], references: [id])
   quantity         Int      @default(1)
   selectedSize     String?
+  sugarLevel       String?
+  iceLevel         String?
   selectedToppings String?
   unitPrice        Decimal  @db.Decimal(12, 2)
 }
@@ -127,7 +129,6 @@ model CartItem {
 model Order {
   id              String      @id @default(uuid())
   orderCode       String      @unique
-  idempotencyKey  String      @unique
   userId          String
   user            User        @relation(fields: [userId], references: [id])
   promotionId     String?
@@ -155,6 +156,8 @@ model OrderItem {
   quantity         Int
   unitPrice        Decimal  @db.Decimal(12, 2)
   selectedSize     String?
+  sugarLevel       String?
+  iceLevel         String?
   selectedToppings String?
   subtotal         Decimal  @db.Decimal(12, 2)
 }
