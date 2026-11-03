@@ -1,5 +1,5 @@
 import {
-  ConflictException,
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -7,20 +7,40 @@ import {
 import { randomUUID } from 'node:crypto';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { CreateOrderDto } from './dto/create-order.dto.js';
+import {
+  CreateOrderDto,
+  CreateOrderItemDto,
+} from './dto/create-order.dto.js';
 
-function matchesRequest(
-  order: {
-    userId: string;
-    orderItems: Array<{ productId: string; quantity: number }>;
-  },
-  input: CreateOrderDto,
-): boolean {
-  return (
-    order.userId === input.userId &&
-    order.orderItems.length === 1 &&
-    order.orderItems[0].productId === input.productId &&
-    order.orderItems[0].quantity === input.quantity
+type OrderRequestItem = Pick<
+  CreateOrderItemDto,
+  | 'productId'
+  | 'quantity'
+  | 'selectedSize'
+  | 'sugarLevel'
+  | 'iceLevel'
+  | 'selectedToppings'
+>;
+
+function getRequestItems(input: CreateOrderDto): OrderRequestItem[] {
+  if (
+    input.items !== undefined && //Nếu có item (nghĩa là khác undefined) thì hàm sẽ trả về items.
+    input.productId === undefined &&
+    input.quantity === undefined
+  ) {
+    return input.items;
+  }
+
+  if (
+    input.items === undefined && //Nếu không có item thì hàm trả về một mảng chứa một đối tượng với productId và quantity từ input.
+    input.productId !== undefined &&
+    input.quantity !== undefined
+  ) {
+    return [{ productId: input.productId, quantity: input.quantity }];
+  }
+
+  throw new BadRequestException(
+    'Provide either items or productId and quantity',
   );
 }
 
@@ -29,19 +49,7 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createOrder(input: CreateOrderDto) {
-    const existingOrder = await this.prisma.order.findUnique({
-      where: { idempotencyKey: input.idempotencyKey },
-      include: { orderItems: true },
-    });
-
-    if (existingOrder) {
-      if (!matchesRequest(existingOrder, input)) {
-        throw new ConflictException('Đã có đơn hàng đặt trước đó');
-      }
-
-      return existingOrder;
-    }
-
+    const requestItems = getRequestItems(input);
     const user = await this.prisma.user.findUnique({
       where: { id: input.userId },
       select: { id: true },
@@ -50,63 +58,74 @@ export class OrdersService {
       throw new NotFoundException('Không tìm thấy người dùng');
     }
 
-    const product = await this.prisma.product.findUnique({
-      where: { id: input.productId },
-    });
-    if (!product) {
-      throw new NotFoundException('Không tìm thấy sản phẩm');
-    }
-    if (
-      product.status !== ProductStatus.AVAILABLE ||
-      product.stockQuantity < input.quantity
-    ) {
-      throw new UnprocessableEntityException('Sản phẩm hiện không đủ số lượng đặt');
+    const productIds = [...new Set(requestItems.map((item) => item.productId))];
+    const products = await Promise.all(
+      productIds.map((productId) =>
+        this.prisma.product.findUnique({ where: { id: productId } }),
+      ),
+    );
+    const productsById = new Map(
+      productIds.map((productId, index) => [productId, products[index]]),
+    );
+    const requestedQuantities = new Map<string, number>();
+    for (const item of requestItems) {
+      requestedQuantities.set(
+        item.productId,
+        (requestedQuantities.get(item.productId) ?? 0) + item.quantity,
+      );
     }
 
-    const subtotal = product.basePrice.mul(input.quantity);
-
-    try {
-      return await this.prisma.order.create({
-        data: {
-          orderCode: `BL-${randomUUID()}`,
-          idempotencyKey: input.idempotencyKey,
-          userId: user.id,
-          subtotal,
-          totalAmount: subtotal,
-          orderItems: {
-            create: {
-              productId: product.id,
-              productName: product.name,
-              quantity: input.quantity,
-              unitPrice: product.basePrice,
-              subtotal,
-            },
-          },
-        },
-        include: { orderItems: true },
-      });
-    } catch (error) {
+    for (const [productId, quantity] of requestedQuantities) {
+      const product = productsById.get(productId);
+      if (!product) {
+        throw new NotFoundException('Không tìm thấy sản phẩm');
+      }
       if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
+        product.status !== ProductStatus.AVAILABLE ||
+        product.stockQuantity < quantity
       ) {
-        const duplicateOrder = await this.prisma.order.findUnique({
-          where: { idempotencyKey: input.idempotencyKey },
-          include: { orderItems: true },
-        });
-        if (duplicateOrder) {
-          if (!matchesRequest(duplicateOrder, input)) {
-            throw new ConflictException(
-              'Idempotency key đã được dùng cho đơn hàng khác',
-            );
-          }
-          return duplicateOrder;
-        }
+        throw new UnprocessableEntityException(
+          'Sản phẩm hiện không đủ số lượng đặt',
+        );
+      }
+    }
 
-        throw new ConflictException('Mã đơn hàng đã được sử dụng');
+    const orderItems = requestItems.map((item) => {
+      const product = productsById.get(item.productId);
+      if (!product) {
+        throw new NotFoundException('Không tìm thấy sản phẩm');
       }
 
-      throw error;
-    }
+      const itemSubtotal = product.basePrice.mul(item.quantity);
+      return {
+        productId: product.id,
+        productName: product.name,
+        quantity: item.quantity,
+        unitPrice: product.basePrice,
+        selectedSize: item.selectedSize ?? 'M',
+        sugarLevel: item.sugarLevel ?? '100%',
+        iceLevel: item.iceLevel ?? '100%',
+        selectedToppings: JSON.stringify(item.selectedToppings ?? []),
+        subtotal: itemSubtotal,
+      };
+    });
+    const subtotal = orderItems.reduce(
+      (total, item) => total.add(item.subtotal),
+      new Prisma.Decimal(0),
+    );
+
+    return this.prisma.order.create({
+      data: {
+        orderCode: `BL-${randomUUID()}`,
+        userId: user.id,
+        note: input.note?.trim() || null,
+        subtotal,
+        totalAmount: subtotal,
+        orderItems: {
+          create: orderItems,
+        },
+      },
+      include: { orderItems: true },
+    });
   }
 }

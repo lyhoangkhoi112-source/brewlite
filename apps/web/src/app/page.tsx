@@ -27,6 +27,38 @@ interface LoginResult {
   user: AuthenticatedUser;
 }
 
+interface OrderItemInput {
+  productId: string;
+  quantity: number;
+  selectedSize: string;
+  sugarLevel: string;
+  iceLevel: string;
+  selectedToppings: string[];
+}
+
+interface OrderConfirmation {
+  orderCode: string;
+  status: string;
+  totalAmount: number;
+  note: string | null;
+  orderItems: Array<{
+    productName: string;
+    quantity: number;
+    selectedSize: string | null;
+    sugarLevel: string | null;
+    iceLevel: string | null;
+    selectedToppings: string | null;
+    subtotal: number;
+  }>;
+}
+
+type OrderIntent = 'buyNow' | 'cart';
+type PendingOrderAction =
+  | { type: 'configureProduct'; product: Product; intent: OrderIntent }
+  | { type: 'checkoutCart' };
+
+const toppingOptions = ['trân châu', 'pudding', 'thạch'];
+
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(
   /\/$/,
   '',
@@ -107,6 +139,62 @@ function parseLoginResult(payload: unknown): LoginResult {
   };
 }
 
+function parseOrderConfirmation(payload: unknown): OrderConfirmation {
+  if (
+    !isRecord(payload) ||
+    typeof payload.orderCode !== 'string' ||
+    typeof payload.status !== 'string' ||
+    !Array.isArray(payload.orderItems)
+  ) {
+    throw new Error('Thông tin đơn hàng từ máy chủ không hợp lệ.');
+  }
+
+  const totalAmount = Number(payload.totalAmount);
+  if (!Number.isFinite(totalAmount)) {
+    throw new Error('Tổng tiền đơn hàng từ máy chủ không hợp lệ.');
+  }
+
+  const orderItems = payload.orderItems.map((item: unknown) => {
+    if (
+      !isRecord(item) ||
+      typeof item.productName !== 'string' ||
+      typeof item.quantity !== 'number' ||
+      typeof item.subtotal !== 'string' &&
+        typeof item.subtotal !== 'number'
+    ) {
+      throw new Error('Chi tiết món hàng từ máy chủ không hợp lệ.');
+    }
+
+    const subtotal = Number(item.subtotal);
+    if (!Number.isFinite(subtotal)) {
+      throw new Error('Thành tiền món hàng từ máy chủ không hợp lệ.');
+    }
+
+    return {
+      productName: item.productName,
+      quantity: item.quantity,
+      selectedSize:
+        typeof item.selectedSize === 'string' ? item.selectedSize : null,
+      sugarLevel:
+        typeof item.sugarLevel === 'string' ? item.sugarLevel : null,
+      iceLevel: typeof item.iceLevel === 'string' ? item.iceLevel : null,
+      selectedToppings:
+        typeof item.selectedToppings === 'string'
+          ? item.selectedToppings
+          : null,
+      subtotal,
+    };
+  });
+
+  return {
+    orderCode: payload.orderCode,
+    status: payload.status,
+    totalAmount,
+    note: typeof payload.note === 'string' ? payload.note : null,
+    orderItems,
+  };
+}
+
 export default function MenuPage() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [products, setProducts] = useState<Product[]>([]);
@@ -126,10 +214,34 @@ export default function MenuPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [configProduct, setConfigProduct] = useState<Product | null>(null);
+  const [configIntent, setConfigIntent] = useState<OrderIntent>('cart');
+  const [pendingOrderAction, setPendingOrderAction] =
+    useState<PendingOrderAction | null>(null);
+  const [authReturnScreen, setAuthReturnScreen] = useState<Screen>('welcome');
+  const [selectedSize, setSelectedSize] = useState('M');
+  const [sugarLevel, setSugarLevel] = useState('100%');
+  const [iceLevel, setIceLevel] = useState('100%');
+  const [selectedToppings, setSelectedToppings] = useState<string[]>([]);
+  const [configuredQuantity, setConfiguredQuantity] = useState(1);
+  const [directOrderNote, setDirectOrderNote] = useState('');
+  const [cartOrderNote, setCartOrderNote] = useState('');
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [orderConfirmation, setOrderConfirmation] =
+    useState<OrderConfirmation | null>(null);
 
   const addItem = useCartStore((state) => state.addItem);
+  const updateCartQuantity = useCartStore((state) => state.updateQuantity);
+  const removeCartItem = useCartStore((state) => state.removeItem);
+  const clearCart = useCartStore((state) => state.clearCart);
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+  const cartTotal = cartItems.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0,
+  );
 
   async function loadMenu(token?: string | null) {
     setLoadingMenu(true);
@@ -156,6 +268,157 @@ export default function MenuPage() {
     }
   }
 
+  function showProductOptions(product: Product, intent: OrderIntent) {
+    setConfigProduct(product);
+    setConfigIntent(intent);
+    setSelectedSize('M');
+    setSugarLevel('100%');
+    setIceLevel('100%');
+    setSelectedToppings([]);
+    setConfiguredQuantity(1);
+    if (intent === 'buyNow') setDirectOrderNote('');
+    setOrderError(null);
+    setCartNotice(null);
+    setOrderConfirmation(null);
+  }
+
+  function requestLogin(action: PendingOrderAction) {
+    setPendingOrderAction(action);
+    setAuthReturnScreen('menu');
+    setLoginError(null);
+    setLoginNotice('Đăng nhập hoặc đăng ký để tiếp tục đặt hàng.');
+    setScreen('login');
+  }
+
+  function openProductOptions(product: Product, intent: OrderIntent) {
+    if (!user) {
+      requestLogin({ type: 'configureProduct', product, intent });
+      return;
+    }
+
+    showProductOptions(product, intent);
+  }
+
+  async function placeOrder(
+    items: OrderItemInput[],
+    clearCartAfterSuccess = false,
+    userId = user?.id,
+    note = '',
+  ) {
+    if (!userId) {
+      setOrderError('Vui lòng đăng nhập trước khi đặt hàng.');
+      return;
+    }
+
+    setIsCreatingOrder(true);
+    setOrderError(null);
+
+    try {
+      const response = await fetch(`${apiUrl}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          items,
+          note: note.trim() || undefined,
+        }),
+      });
+      const payload: unknown = await response.json();
+
+      if (!response.ok) {
+        throw new Error(readErrorMessage(payload, 'Không thể tạo đơn hàng.'));
+      }
+
+      setOrderConfirmation(parseOrderConfirmation(payload));
+      setConfigProduct(null);
+      if (clearCartAfterSuccess) {
+        clearCart();
+        setCartOrderNote('');
+      } else {
+        setDirectOrderNote('');
+      }
+    } catch (error) {
+      setOrderError(
+        error instanceof Error ? error.message : 'Không thể kết nối đến máy chủ.',
+      );
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  }
+
+  function addConfiguredProductToCart() {
+    if (!configProduct) return;
+
+    const sortedToppings = [...selectedToppings].sort();
+    addItem({
+      id: JSON.stringify([
+        configProduct.id,
+        selectedSize,
+        sugarLevel,
+        iceLevel,
+        sortedToppings,
+      ]),
+      productId: configProduct.id,
+      name: configProduct.name,
+      price: configProduct.price,
+      quantity: configuredQuantity,
+      selectedSize,
+      sugarLevel,
+      iceLevel,
+      selectedToppings: sortedToppings,
+    });
+    setCartNotice(`${configProduct.name} đã được thêm vào giỏ hàng.`);
+    setConfigProduct(null);
+  }
+
+  function orderConfiguredProductNow() {
+    if (!configProduct) return;
+    void placeOrder(
+      [
+        {
+          productId: configProduct.id,
+          quantity: configuredQuantity,
+          selectedSize,
+          sugarLevel,
+          iceLevel,
+          selectedToppings,
+        },
+      ],
+      false,
+      undefined,
+      directOrderNote,
+    );
+  }
+
+  function confirmProductOptions() {
+    if (configIntent === 'buyNow') {
+      orderConfiguredProductNow();
+    } else {
+      addConfiguredProductToCart();
+    }
+  }
+
+  function checkoutCart(userId = user?.id) {
+    if (!userId) {
+      requestLogin({ type: 'checkoutCart' });
+      return;
+    }
+
+    void placeOrder(
+      cartItems.map((item) => ({
+        productId: item.productId ?? item.id,
+        quantity: item.quantity,
+        selectedSize: item.selectedSize ?? 'M',
+        sugarLevel: item.sugarLevel ?? '100%',
+        iceLevel: item.iceLevel ?? '100%',
+        selectedToppings: item.selectedToppings ?? [],
+      })),
+      true,
+      userId,
+      cartOrderNote,
+    );
+  }
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -178,8 +441,17 @@ export default function MenuPage() {
       setAccessToken(result.accessToken);
       setUser(result.user);
       setPassword('');
+      setLoginNotice(null);
       setScreen('menu');
       await loadMenu(result.accessToken);
+
+      const nextAction = pendingOrderAction;
+      setPendingOrderAction(null);
+      if (nextAction?.type === 'configureProduct') {
+        showProductOptions(nextAction.product, nextAction.intent);
+      } else if (nextAction?.type === 'checkoutCart') {
+        checkoutCart(result.user.id);
+      }
     } catch (error) {
       setLoginError(
         error instanceof Error ? error.message : 'Không thể kết nối đến máy chủ.',
@@ -227,13 +499,23 @@ export default function MenuPage() {
   }
 
   function openMenu() {
+    setPendingOrderAction(null);
+    setLoginNotice(null);
     setScreen('menu');
     void loadMenu(accessToken);
+  }
+
+  function returnFromAuth() {
+    setPendingOrderAction(null);
+    setLoginNotice(null);
+    setScreen(authReturnScreen);
   }
 
   function logout() {
     setAccessToken(null);
     setUser(null);
+    setConfigProduct(null);
+    setPendingOrderAction(null);
     setScreen('menu');
   }
 
@@ -264,6 +546,9 @@ export default function MenuPage() {
               type="button"
               onClick={() => {
                 setLoginError(null);
+                setLoginNotice(null);
+                setPendingOrderAction(null);
+                setAuthReturnScreen('welcome');
                 setScreen('login');
               }}
               className="rounded-xl bg-[#304b39] px-6 py-3.5 font-semibold text-white transition hover:bg-[#243b2c]"
@@ -281,6 +566,8 @@ export default function MenuPage() {
               type="button"
               onClick={() => {
                 setRegisterError(null);
+                setPendingOrderAction(null);
+                setAuthReturnScreen('welcome');
                 setScreen('register');
               }}
               className="rounded-xl border border-[#d8dfd6] px-6 py-3.5 font-semibold text-[#304b39] transition hover:bg-[#f4f7f2]"
@@ -299,7 +586,7 @@ export default function MenuPage() {
         <section className="w-full max-w-md rounded-[2rem] border border-[#e8e1d3] bg-white p-7 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:p-10">
           <button
             type="button"
-            onClick={() => setScreen('welcome')}
+            onClick={returnFromAuth}
             className="mb-8 text-sm font-semibold text-[#647268] hover:text-[#304b39]"
           >
             ← Quay lại
@@ -382,7 +669,7 @@ export default function MenuPage() {
         <section className="w-full max-w-md rounded-[2rem] border border-[#e8e1d3] bg-white p-7 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:p-10">
           <button
             type="button"
-            onClick={() => setScreen('welcome')}
+            onClick={returnFromAuth}
             className="mb-8 text-sm font-semibold text-[#647268] hover:text-[#304b39]"
           >
             ← Quay lại
@@ -486,7 +773,11 @@ export default function MenuPage() {
             </span>
             <button
               type="button"
-              onClick={() => setScreen('welcome')}
+              onClick={() => {
+                setPendingOrderAction(null);
+                setConfigProduct(null);
+                setScreen('welcome');
+              }}
               className="hidden text-sm font-medium text-[#647268] hover:text-[#304b39] sm:block"
             >
               Trang chủ
@@ -592,21 +883,24 @@ export default function MenuPage() {
                         ID: {product.id}
                       </p>
                       </div>
-                    <button
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() =>
-                        addItem({
-                          id: product.id,
-                          name: product.name,
-                          price: product.price,
-                          quantity: 1,
-                        })
-                      }
-                      className="mt-5 rounded-xl bg-[#304b39] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:bg-[#d9ded8] disabled:text-[#788078]"
-                    >
-                      {isAvailable ? 'Thêm vào giỏ' : 'Hết hàng'}
-                    </button>
+                    <div className="mt-5 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => openProductOptions(product, 'buyNow')}
+                        className="rounded-xl border border-[#dce2da] px-3 py-2.5 text-sm font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Mua ngay
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => openProductOptions(product, 'cart')}
+                        className="rounded-xl bg-[#304b39] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:bg-[#d9ded8] disabled:text-[#788078]"
+                      >
+                        Thêm vào giỏ
+                      </button>
+                    </div>
                     </div>
                   </article>
                 );
@@ -616,6 +910,119 @@ export default function MenuPage() {
         </section>
 
         <aside className="h-fit rounded-2xl border border-[#e8e1d3] bg-white p-6 shadow-sm lg:sticky lg:top-8">
+          <section id="cart" aria-labelledby="cart-heading">
+            <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
+              Đơn đang chọn
+            </p>
+            <h2 id="cart-heading" className="mt-2 text-xl font-semibold">
+              Giỏ hàng · {cartCount}
+            </h2>
+            {cartNotice && (
+              <p role="status" className="mt-3 rounded-xl bg-[#edf2e9] px-3 py-2 text-sm text-[#405d47]">
+                {cartNotice}
+              </p>
+            )}
+            {cartItems.length === 0 ? (
+              <p className="mt-3 text-sm text-[#69746b]">Giỏ hàng đang trống.</p>
+            ) : (
+              <>
+                <ul className="mt-4 divide-y divide-[#edf0eb]">
+                  {cartItems.map((item) => (
+                    <li key={item.id} className="py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">{item.name}</p>
+                          <p className="mt-1 text-xs leading-5 text-[#69746b]">
+                            Size {item.selectedSize ?? 'M'} · Đường{' '}
+                            {item.sugarLevel ?? '100%'} · Đá{' '}
+                            {item.iceLevel ?? '100%'}
+                            {(item.selectedToppings ?? []).length > 0 &&
+                              ` · ${item.selectedToppings?.join(', ')}`}
+                          </p>
+                          <p className="mt-1 text-sm text-[#69746b]">
+                            {item.price.toLocaleString('vi-VN')} đ / món
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeCartItem(item.id)}
+                          className="text-xs font-semibold text-[#8b5a53] hover:underline"
+                          aria-label={`Xóa ${item.name} khỏi giỏ`}
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateCartQuantity(item.id, item.quantity - 1)
+                            }
+                            className="h-8 w-8 rounded-full border border-[#dce2da] font-semibold"
+                            aria-label={`Giảm số lượng ${item.name}`}
+                          >
+                            −
+                          </button>
+                          <span aria-label="Số lượng">{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateCartQuantity(item.id, item.quantity + 1)
+                            }
+                            className="h-8 w-8 rounded-full border border-[#dce2da] font-semibold"
+                            aria-label={`Tăng số lượng ${item.name}`}
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="text-sm font-semibold">
+                          {(item.price * item.quantity).toLocaleString('vi-VN')} đ
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex justify-between border-t border-[#edf0eb] pt-4 font-semibold">
+                  <span>Tạm tính</span>
+                  <span>{cartTotal.toLocaleString('vi-VN')} đ</span>
+                </div>
+                <label className="mt-4 block text-sm font-medium text-[#46544a]">
+                  Ghi chú đơn hàng
+                  <textarea
+                    value={cartOrderNote}
+                    onChange={(event) => setCartOrderNote(event.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="Ví dụ: ít ngọt, nhận tại quầy..."
+                    className="mt-2 w-full resize-y rounded-xl border border-[#dce2da] px-3 py-2.5 outline-none transition focus:border-[#59775e] focus:ring-4 focus:ring-[#59775e]/10"
+                  />
+                </label>
+                <p className="mt-2 text-xs text-[#818a81]">
+                  Tùy chọn size, đường, đá và topping hiện chưa tính phụ thu.
+                </p>
+                {orderError && (
+                  <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {orderError}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={isCreatingOrder}
+                  onClick={() => checkoutCart()}
+                  className="mt-4 w-full rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCreatingOrder
+                    ? 'Đang đặt hàng...'
+                    : user
+                      ? 'Đặt hàng từ giỏ'
+                      : 'Đăng nhập để đặt hàng'}
+                </button>
+              </>
+            )}
+          </section>
+
+          <div className="my-6 border-t border-[#edf0eb]" />
           {user ? (
             <>
               <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
@@ -644,6 +1051,7 @@ export default function MenuPage() {
                 type="button"
                 onClick={() => {
                   setRegisterError(null);
+                  setAuthReturnScreen('menu');
                   setScreen('register');
                 }}
                 className="mt-4 text-sm font-semibold text-[#405d47] hover:text-[#243b2c]"
@@ -692,6 +1100,245 @@ export default function MenuPage() {
           )}
         </aside>
       </div>
+
+      {configProduct && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-options-heading"
+            className="my-auto w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
+                  Tùy chỉnh món
+                </p>
+                <h2 id="product-options-heading" className="mt-2 text-2xl font-semibold">
+                  {configProduct.name}
+                </h2>
+                <p className="mt-1 text-sm text-[#69746b]">
+                  {configProduct.price.toLocaleString('vi-VN')} đ · Chưa tính phụ thu
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfigProduct(null)}
+                className="rounded-full px-3 py-1 text-xl text-[#69746b] hover:bg-[#f4f7f2]"
+                aria-label="Đóng tùy chỉnh món"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-medium text-[#46544a]">
+                Kích cỡ
+                <select
+                  value={selectedSize}
+                  onChange={(event) => setSelectedSize(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
+                >
+                  {['S', 'M', 'L'].map((size) => (
+                    <option key={size} value={size}>Size {size}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-[#46544a]">
+                Số lượng
+                <input
+                  type="number"
+                  min={1}
+                  max={configProduct.stockQuantity}
+                  value={configuredQuantity}
+                  onChange={(event) =>
+                    setConfiguredQuantity(
+                      Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-[#dce2da] px-3 py-3"
+                />
+              </label>
+              <label className="text-sm font-medium text-[#46544a]">
+                Lượng đường
+                <select
+                  value={sugarLevel}
+                  onChange={(event) => setSugarLevel(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
+                >
+                  {['0%', '50%', '100%'].map((level) => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-[#46544a]">
+                Lượng đá
+                <select
+                  value={iceLevel}
+                  onChange={(event) => setIceLevel(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
+                >
+                  {['0%', '50%', '100%'].map((level) => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {configIntent === 'buyNow' && (
+              <label className="mt-5 block text-sm font-medium text-[#46544a]">
+                Ghi chú đơn hàng
+                <textarea
+                  value={directOrderNote}
+                  onChange={(event) => setDirectOrderNote(event.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Ví dụ: ít ngọt, nhận tại quầy..."
+                  className="mt-2 w-full resize-y rounded-xl border border-[#dce2da] px-3 py-2.5 outline-none transition focus:border-[#59775e] focus:ring-4 focus:ring-[#59775e]/10"
+                />
+              </label>
+            )}
+
+            <fieldset className="mt-5">
+              <legend className="text-sm font-medium text-[#46544a]">
+                Topping (không phụ thu)
+              </legend>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {toppingOptions.map((topping) => {
+                  const checked = selectedToppings.includes(topping);
+                  return (
+                    <label
+                      key={topping}
+                      className={`cursor-pointer rounded-full border px-4 py-2 text-sm ${
+                        checked
+                          ? 'border-[#59775e] bg-[#edf2e9] text-[#304b39]'
+                          : 'border-[#dce2da] text-[#69746b]'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedToppings((current) =>
+                            checked
+                              ? current.filter((value) => value !== topping)
+                              : [...current, topping],
+                          )
+                        }
+                        className="sr-only"
+                      />
+                      {topping}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            {orderError && (
+              <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                {orderError}
+              </p>
+            )}
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={isCreatingOrder}
+                onClick={confirmProductOptions}
+                className="rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCreatingOrder
+                  ? 'Đang đặt...'
+                  : configIntent === 'buyNow'
+                    ? 'Xác nhận mua ngay'
+                    : 'Thêm vào giỏ'}
+              </button>
+              <button
+                type="button"
+                disabled={isCreatingOrder}
+                onClick={
+                  configIntent === 'buyNow'
+                    ? addConfiguredProductToCart
+                    : orderConfiguredProductNow
+                }
+                className="rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {configIntent === 'buyNow' ? 'Thêm vào giỏ' : 'Mua ngay'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {orderConfirmation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-confirmation-heading"
+            className="my-auto w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+          >
+            <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
+              Đặt hàng thành công
+            </p>
+            <h2 id="order-confirmation-heading" className="mt-2 text-2xl font-semibold">
+              Mã đơn {orderConfirmation.orderCode}
+            </h2>
+            <p className="mt-2 text-sm text-[#69746b]">
+              Trạng thái: {orderConfirmation.status}
+            </p>
+            {orderConfirmation.note && (
+              <p className="mt-3 rounded-xl bg-[#f7f4ed] px-4 py-3 text-sm text-[#46544a]">
+                Ghi chú: {orderConfirmation.note}
+              </p>
+            )}
+            <ul className="mt-5 divide-y divide-[#edf0eb]">
+              {orderConfirmation.orderItems.map((item, index) => {
+                let toppings = item.selectedToppings ?? '';
+                if (toppings) {
+                  try {
+                    const parsed: unknown = JSON.parse(toppings);
+                    if (
+                      Array.isArray(parsed) &&
+                      parsed.every((value) => typeof value === 'string')
+                    ) {
+                      toppings = parsed.join(', ');
+                    }
+                  } catch {
+                    toppings = item.selectedToppings ?? '';
+                  }
+                }
+
+                return (
+                  <li key={`${item.productName}-${index}`} className="py-4">
+                    <div className="flex justify-between gap-3">
+                      <span className="font-semibold">
+                        {item.productName} × {item.quantity}
+                      </span>
+                      <span>{item.subtotal.toLocaleString('vi-VN')} đ</span>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[#69746b]">
+                      Size {item.selectedSize ?? 'M'} · Đường{' '}
+                      {item.sugarLevel ?? '100%'} · Đá {item.iceLevel ?? '100%'}
+                      {toppings ? ` · Topping: ${toppings}` : ''}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-3 flex justify-between border-t border-[#edf0eb] pt-4 text-lg font-semibold">
+              <span>Tổng cộng</span>
+              <span>{orderConfirmation.totalAmount.toLocaleString('vi-VN')} đ</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOrderConfirmation(null)}
+              className="mt-6 w-full rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c]"
+            >
+              Đóng
+            </button>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
