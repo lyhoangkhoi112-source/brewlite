@@ -1,0 +1,21 @@
+@startuml
+left to right direction
+title USE CASE 06 - QUẢN LÝ SẢN PHẨM
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Quản lý cửa hàng" as Manager
+
+rectangle "Hệ thống BrewLite\n- Quản lý sản phẩm -" {
+    usecase "Quản lý sản phẩm" as ManageProduct
+}
+
+Manager -- ManageProduct
+@enduml

@@ -1,0 +1,23 @@
+@startuml
+left to right direction
+title USE CASE 04 - TRA CỨU VÀ THEO DÕI ĐƠN HÀNG
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Khách hàng" as Customer
+
+rectangle "Hệ thống BrewLite\n- Tra cứu đơn hàng -" {
+    usecase "Xem lịch sử\nđơn hàng" as History
+    usecase "Theo dõi\ntrạng thái đơn" as Tracking
+}
+
+Customer -- History
+Customer -- Tracking
+@enduml
