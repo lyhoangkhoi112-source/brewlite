@@ -1,13 +1,16 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   ArrayUnique,
   IsArray,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Length,
   MaxLength,
   Min,
   Validate,
@@ -64,8 +67,15 @@ class OrderItemsInputConstraint implements ValidatorConstraintInterface {
 }
 
 export class CreateOrderDto {
-  @IsUUID()
-  userId: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  shippingAddress: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  contactPhone: string;
 
   @ValidateIf( //Toàn bộ decorator @ValidateIf được sử dụng để xác định điều kiện mà tại đó các ràng buộc xác thực sẽ được áp dụng. Trong trường hợp này, nó kiểm tra xem người dùng đã gửi trường items hay chưa. Nếu không, thì các ràng buộc xác thực sẽ được áp dụng cho productId và quantity.
     (request: CreateOrderDto) =>
@@ -92,4 +102,23 @@ export class CreateOrderDto {
   @IsInt()
   @Min(1)
   quantity?: number;
+}
+
+export class GuestOrderAccessDto {
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Length(64, 64, { each: true })
+  accessTokens: string[];
+}
+
+export class CancelOrderDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Length(64, 64, { each: true })
+  accessTokens?: string[];
 }

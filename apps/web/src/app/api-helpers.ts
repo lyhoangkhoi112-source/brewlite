@@ -1,0 +1,259 @@
+import type {
+  LoginResult,
+  OrderConfirmation,
+  OrderHistoryEntry,
+  Product,
+} from './types';
+import { productCategories } from './types';
+
+export const guestOrderTokensKey = 'brewlite-guest-order-tokens';
+
+export const apiUrl = (
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+).replace(/\/$/, '');
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+export function readErrorMessage(payload: unknown, fallback: string): string {
+  if (!isRecord(payload)) return fallback;
+
+  const message = payload.message;
+  if (typeof message === 'string') return message;
+  if (Array.isArray(message)) {
+    return message
+      .filter((part): part is string => typeof part === 'string')
+      .join(', ');
+  }
+  return fallback;
+}
+
+export function parseProducts(payload: unknown): Product[] {
+  if (!Array.isArray(payload)) {
+    throw new Error('Dữ liệu thực đơn từ máy chủ không hợp lệ.');
+  }
+
+  return payload.map((item: unknown) => {
+    if (!isRecord(item)) {
+      throw new Error('Dữ liệu món ăn từ máy chủ không hợp lệ.');
+    }
+
+    const price = Number(item.basePrice);
+    const category = productCategories.find(
+      (option) => option.value === item.category,
+    )?.value;
+    if (
+      typeof item.id !== 'string' ||
+      typeof item.name !== 'string' ||
+      (item.category !== null &&
+        item.category !== undefined &&
+        category === undefined) ||
+      !Number.isFinite(price) ||
+      typeof item.stockQuantity !== 'number' ||
+      typeof item.status !== 'string' ||
+      (item.imageUrl !== null && typeof item.imageUrl !== 'string')
+    ) {
+      throw new Error('Dữ liệu món ăn từ máy chủ không hợp lệ.');
+    }
+
+    return {
+      id: item.id,
+      name: item.name,
+      category: category ?? null,
+      price,
+      imageUrl: item.imageUrl,
+      stockQuantity: item.stockQuantity,
+      status: item.status,
+    };
+  });
+}
+
+export function parseLoginResult(payload: unknown): LoginResult {
+  if (!isRecord(payload) || !isRecord(payload.user)) {
+    throw new Error('Phản hồi đăng nhập từ máy chủ không hợp lệ.');
+  }
+
+  const { user } = payload;
+  if (
+    typeof payload.accessToken !== 'string' ||
+    typeof user.id !== 'string' ||
+    typeof user.fullName !== 'string' ||
+    typeof user.email !== 'string' ||
+    (user.phone !== null &&
+      user.phone !== undefined &&
+      typeof user.phone !== 'string') ||
+    typeof user.role !== 'string'
+  ) {
+    throw new Error('Phản hồi đăng nhập từ máy chủ không hợp lệ.');
+  }
+
+  return {
+    accessToken: payload.accessToken,
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: typeof user.phone === 'string' ? user.phone : null,
+      role: user.role,
+    },
+  };
+}
+
+export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
+  if (
+    !isRecord(payload) ||
+    typeof payload.orderCode !== 'string' ||
+    typeof payload.status !== 'string' ||
+    !Array.isArray(payload.orderItems)
+  ) {
+    throw new Error('Thông tin đơn hàng từ máy chủ không hợp lệ.');
+  }
+
+  const totalAmount = Number(payload.totalAmount);
+  if (!Number.isFinite(totalAmount)) {
+    throw new Error('Tổng tiền đơn hàng từ máy chủ không hợp lệ.');
+  }
+
+  const orderItems = payload.orderItems.map((item: unknown) => {
+    if (
+      !isRecord(item) ||
+      typeof item.productName !== 'string' ||
+      typeof item.quantity !== 'number' ||
+      (typeof item.subtotal !== 'string' && typeof item.subtotal !== 'number')
+    ) {
+      throw new Error('Chi tiết món hàng từ máy chủ không hợp lệ.');
+    }
+
+    const subtotal = Number(item.subtotal);
+    if (!Number.isFinite(subtotal)) {
+      throw new Error('Thành tiền món hàng từ máy chủ không hợp lệ.');
+    }
+
+    return {
+      productName: item.productName,
+      quantity: item.quantity,
+      selectedSize:
+        typeof item.selectedSize === 'string' ? item.selectedSize : null,
+      sugarLevel: typeof item.sugarLevel === 'string' ? item.sugarLevel : null,
+      iceLevel: typeof item.iceLevel === 'string' ? item.iceLevel : null,
+      selectedToppings:
+        typeof item.selectedToppings === 'string'
+          ? item.selectedToppings
+          : null,
+      subtotal,
+    };
+  });
+
+  return {
+    orderCode: payload.orderCode,
+    status: payload.status,
+    totalAmount,
+    note: typeof payload.note === 'string' ? payload.note : null,
+    shippingAddress:
+      typeof payload.shippingAddress === 'string'
+        ? payload.shippingAddress
+        : null,
+    contactPhone:
+      typeof payload.contactPhone === 'string' ? payload.contactPhone : null,
+    orderItems,
+  };
+}
+
+export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
+  if (!Array.isArray(payload)) {
+    throw new Error('Danh sách đơn hàng từ máy chủ không hợp lệ.');
+  }
+
+  return payload.map((value: unknown) => {
+    if (
+      !isRecord(value) ||
+      typeof value.id !== 'string' ||
+      typeof value.orderCode !== 'string' ||
+      typeof value.status !== 'string' ||
+      typeof value.createdAt !== 'string' ||
+      !Array.isArray(value.orderItems)
+    ) {
+      throw new Error('Thông tin đơn hàng từ máy chủ không hợp lệ.');
+    }
+
+    const totalAmount = Number(value.totalAmount);
+    if (!Number.isFinite(totalAmount)) {
+      throw new Error('Tổng tiền đơn hàng từ máy chủ không hợp lệ.');
+    }
+
+    const orderItems = value.orderItems.map((item: unknown) => {
+      if (
+        !isRecord(item) ||
+        typeof item.id !== 'string' ||
+        typeof item.productName !== 'string' ||
+        typeof item.quantity !== 'number' ||
+        !isRecord(item.product)
+      ) {
+        throw new Error('Chi tiết món hàng từ máy chủ không hợp lệ.');
+      }
+
+      const subtotal = Number(item.subtotal);
+      if (!Number.isFinite(subtotal)) {
+        throw new Error('Thành tiền món hàng từ máy chủ không hợp lệ.');
+      }
+
+      return {
+        id: item.id,
+        productName: item.productName,
+        quantity: item.quantity,
+        isStandaloneTopping: item.product.category === 'TOPPING',
+        selectedSize:
+          typeof item.selectedSize === 'string' ? item.selectedSize : null,
+        sugarLevel:
+          typeof item.sugarLevel === 'string' ? item.sugarLevel : null,
+        iceLevel: typeof item.iceLevel === 'string' ? item.iceLevel : null,
+        selectedToppings:
+          typeof item.selectedToppings === 'string'
+            ? item.selectedToppings
+            : null,
+        subtotal,
+      };
+    });
+
+    return {
+      id: value.id,
+      orderCode: value.orderCode,
+      status: value.status,
+      createdAt: value.createdAt,
+      totalAmount,
+      shippingAddress:
+        typeof value.shippingAddress === 'string'
+          ? value.shippingAddress
+          : null,
+      contactPhone:
+        typeof value.contactPhone === 'string' ? value.contactPhone : null,
+      note: typeof value.note === 'string' ? value.note : null,
+      orderItems,
+    };
+  });
+}
+
+export function getGuestOrderTokens(): string[] {
+  const stored = window.localStorage.getItem(guestOrderTokensKey);
+  if (stored === null) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    throw new Error(
+      'Không thể đọc thông tin truy cập đơn hàng trên thiết bị này.',
+    );
+  }
+
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every(
+      (token) => typeof token === 'string' && /^[a-f0-9]{64}$/i.test(token),
+    )
+  ) {
+    throw new Error('Thông tin truy cập đơn hàng trên thiết bị không hợp lệ.');
+  }
+  return parsed;
+}
