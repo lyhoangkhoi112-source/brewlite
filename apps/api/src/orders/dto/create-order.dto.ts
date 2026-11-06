@@ -1,3 +1,4 @@
+import type { PaymentMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -21,7 +22,8 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 
-export class CreateOrderItemDto { //Tạo một lớp DTO (Data Transfer Object) để đại diện cho một mục trong đơn hàng. Lớp này có hai thuộc tính: productId và quantity, với các ràng buộc xác thực được áp dụng thông qua các decorator từ thư viện class-validator.
+export class CreateOrderItemDto {
+  //Tạo một lớp DTO (Data Transfer Object) để đại diện cho một mục trong đơn hàng. Lớp này có hai thuộc tính: productId và quantity, với các ràng buộc xác thực được áp dụng thông qua các decorator từ thư viện class-validator.
   @IsUUID()
   productId: string;
 
@@ -34,7 +36,7 @@ export class CreateOrderItemDto { //Tạo một lớp DTO (Data Transfer Object)
   selectedSize?: string;
 
   @IsOptional()
-  @IsIn(['0%', '50%', '100%'])
+  @IsIn(['25%', '50%', '75%', '100%'])
   sugarLevel?: string;
 
   @IsOptional()
@@ -50,7 +52,8 @@ export class CreateOrderItemDto { //Tạo một lớp DTO (Data Transfer Object)
 
 @ValidatorConstraint() //dùng để đăng ký một quy tác kiểm tra tùy chỉnh
 class OrderItemsInputConstraint implements ValidatorConstraintInterface {
-  validate(_value: unknown, args: ValidationArguments): boolean { //Hàm validate kiểm tra xem dữ liệu đầu vào có hợp lệ hay không. Nó nhận hai tham số: _value (giá trị cần kiểm tra) và args (các đối số liên quan đến quá trình xác thực). Trong hàm này, chúng ta kiểm tra xem người dùng đã cung cấp các mục đơn hàng hay chưa, hoặc nếu không, họ đã cung cấp productId và quantity hay chưa.
+  validate(_value: unknown, args: ValidationArguments): boolean {
+    //Hàm validate kiểm tra xem dữ liệu đầu vào có hợp lệ hay không. Nó nhận hai tham số: _value (giá trị cần kiểm tra) và args (các đối số liên quan đến quá trình xác thực). Trong hàm này, chúng ta kiểm tra xem người dùng đã cung cấp các mục đơn hàng hay chưa, hoặc nếu không, họ đã cung cấp productId và quantity hay chưa.
     const request = args.object as CreateOrderDto; //Chuyển đổi đối tượng args.object thành kiểu CreateOrderDto để có thể truy cập các thuộc tính của nó.
     const hasItems = request.items !== undefined; //Kiểm tra xem request có gửi trường items hay không. Nếu có, hasItems sẽ là true, ngược lại sẽ là false.
     const hasLegacyFields =
@@ -77,7 +80,8 @@ export class CreateOrderDto {
   @MaxLength(20)
   contactPhone: string;
 
-  @ValidateIf( //Toàn bộ decorator @ValidateIf được sử dụng để xác định điều kiện mà tại đó các ràng buộc xác thực sẽ được áp dụng. Trong trường hợp này, nó kiểm tra xem người dùng đã gửi trường items hay chưa. Nếu không, thì các ràng buộc xác thực sẽ được áp dụng cho productId và quantity.
+  @ValidateIf(
+    //Toàn bộ decorator @ValidateIf được sử dụng để xác định điều kiện mà tại đó các ràng buộc xác thực sẽ được áp dụng. Trong trường hợp này, nó kiểm tra xem người dùng đã gửi trường items hay chưa. Nếu không, thì các ràng buộc xác thực sẽ được áp dụng cho productId và quantity.
     (request: CreateOrderDto) =>
       request.items !== undefined ||
       (request.productId === undefined && request.quantity === undefined),
@@ -93,6 +97,10 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @IsIn(['MOMO', 'VNPAY', 'SHOPEEPAY'])
+  paymentMethod?: PaymentMethod;
 
   @ValidateIf((request: CreateOrderDto) => request.items === undefined)
   @IsUUID()

@@ -47,7 +47,7 @@ export function CartDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="cart-heading"
-        className="h-full w-full max-w-xl overflow-y-auto rounded-none border border-[#e8e1d3] bg-white p-6 shadow-2xl sm:rounded-2xl sm:p-8"
+        className="h-dvh w-full max-w-xl overflow-y-auto rounded-none border border-[#e8e1d3] bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:h-full sm:rounded-2xl sm:p-8"
       >
         <div className="mb-5 flex items-center justify-between">
           <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
@@ -56,7 +56,7 @@ export function CartDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full px-3 py-1 text-2xl text-[#69746b] hover:bg-[#f4f7f2]"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-2xl text-[#69746b] hover:bg-[#f4f7f2]"
             aria-label="Đóng giỏ hàng"
           >
             ×
@@ -125,7 +125,7 @@ export function CartDrawer({
                                 }
                                 className="mt-1 w-full rounded-lg border border-[#dce2da] bg-white px-2 py-2 text-sm text-[#46544a]"
                               >
-                                {['0%', '50%', '100%'].map((level) => (
+                                {['25%', '50%', '75%', '100%'].map((level) => (
                                   <option key={level} value={level}>
                                     {level}
                                   </option>
@@ -174,7 +174,7 @@ export function CartDrawer({
                           onClick={() =>
                             onUpdateQuantity(item.id, item.quantity - 1)
                           }
-                          className="h-8 w-8 rounded-full border border-[#dce2da] font-semibold"
+                          className="h-11 w-11 rounded-full border border-[#dce2da] font-semibold"
                           aria-label={`Giảm số lượng ${item.name}`}
                         >
                           −
@@ -185,7 +185,7 @@ export function CartDrawer({
                           onClick={() =>
                             onUpdateQuantity(item.id, item.quantity + 1)
                           }
-                          className="h-8 w-8 rounded-full border border-[#dce2da] font-semibold"
+                          className="h-11 w-11 rounded-full border border-[#dce2da] font-semibold"
                           aria-label={`Tăng số lượng ${item.name}`}
                         >
                           +
@@ -220,7 +220,7 @@ export function CartDrawer({
                 type="button"
                 disabled={isCreatingOrder}
                 onClick={onCheckout}
-                className="mt-4 w-full rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
+                className="sticky bottom-0 mt-4 min-h-12 w-full rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white shadow-[0_-8px_16px_rgba(255,255,255,0.9)] transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isCreatingOrder ? 'Đang đặt hàng...' : 'Đặt hàng'}
               </button>

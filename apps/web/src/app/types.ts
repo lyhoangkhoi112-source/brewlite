@@ -11,6 +11,8 @@ export const productCategories = [
 export type Screen = 'welcome' | 'login' | 'register' | 'menu';
 export type ProductCategory = (typeof productCategories)[number]['value'];
 export type OrderIntent = 'buyNow' | 'cart';
+export type PaymentMethod = 'MOMO' | 'VNPAY' | 'SHOPEEPAY';
+export type MockPaymentOutcome = 'SUCCESS' | 'FAILED' | 'CANCELLED';
 
 export interface Product {
   id: string;
@@ -45,13 +47,21 @@ export interface OrderItemInput {
 }
 
 export interface OrderConfirmation {
+  id: string;
   orderCode: string;
   status: string;
   totalAmount: number;
+  payments: Array<{
+    id: string;
+    amount: number;
+    method: PaymentMethod;
+    status: string;
+  }>;
   note: string | null;
   shippingAddress: string | null;
   contactPhone: string | null;
   orderItems: Array<{
+    productId: string;
     productName: string;
     quantity: number;
     isStandaloneTopping?: boolean;
@@ -60,6 +70,18 @@ export interface OrderConfirmation {
     iceLevel: string | null;
     selectedToppings: string | null;
     subtotal: number;
+  }>;
+}
+
+export interface LoyaltySummary {
+  balance: number;
+  transactions: Array<{
+    id: string;
+    type: string;
+    points: number;
+    balanceAfter: number;
+    description: string | null;
+    createdAt: string;
   }>;
 }
 

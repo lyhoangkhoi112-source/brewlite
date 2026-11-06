@@ -31,7 +31,7 @@ export function DeliveryFields({
         : null;
 
   return (
-    <section className="rounded-2xl border border-[#e8e1d3] bg-white p-5 shadow-sm sm:p-6">
+    <section className="rounded-2xl border border-[#e8e1d3] bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-lg font-semibold text-[#304b39]">
         Thông tin giao hàng
       </h2>
@@ -52,7 +52,7 @@ export function DeliveryFields({
               onClearError();
             }}
             placeholder="Ví dụ: 0901234567"
-            className="mt-2 w-full rounded-xl border border-[#dce2da] px-3.5 py-3 outline-none transition focus:border-[#59775e] focus:ring-4 focus:ring-[#59775e]/10"
+            className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] px-3.5 py-3 text-base outline-none transition focus:border-[#59775e] focus:ring-4 focus:ring-[#59775e]/10"
           />
           {phoneError && (
             <span className="mt-1 block text-xs text-red-700" role="alert">
@@ -72,7 +72,7 @@ export function DeliveryFields({
               onClearError();
             }}
             placeholder="Số nhà, đường, phường/xã, quận/huyện"
-            className="mt-2 w-full rounded-xl border border-[#dce2da] px-3.5 py-3 outline-none transition focus:border-[#59775e] focus:ring-4 focus:ring-[#59775e]/10"
+            className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] px-3.5 py-3 text-base outline-none transition focus:border-[#59775e] focus:ring-4 focus:ring-[#59775e]/10"
           />
           {addressError && (
             <span className="mt-1 block text-xs text-red-700" role="alert">

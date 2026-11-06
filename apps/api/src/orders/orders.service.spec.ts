@@ -1,5 +1,11 @@
 import { Test } from '@nestjs/testing';
-import { Prisma, ProductStatus } from '@prisma/client';
+import {
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+  Prisma,
+  ProductStatus,
+} from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
@@ -8,7 +14,10 @@ import { OrdersService } from './orders.service.js';
 describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: {
-    user: { findUnique: ReturnType<typeof vi.fn> };
+    user: {
+      findUnique: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+    };
     product: {
       findUnique: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
@@ -19,6 +28,11 @@ describe('OrdersService', () => {
       findFirst: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
       findUniqueOrThrow: ReturnType<typeof vi.fn>;
+    };
+    payment: { updateMany: ReturnType<typeof vi.fn> };
+    loyaltyTransaction: {
+      create: ReturnType<typeof vi.fn>;
+      findMany: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -43,7 +57,10 @@ describe('OrdersService', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: vi.fn().mockResolvedValue({ id: userId }) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: userId }),
+        update: vi.fn().mockResolvedValue({ loyaltyPoints: 5 }),
+      },
       product: {
         findUnique: vi.fn().mockResolvedValue(latte),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -65,6 +82,11 @@ describe('OrdersService', () => {
           orderItems: [],
         }),
       },
+      payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      loyaltyTransaction: {
+        create: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       $transaction: vi.fn(
         (callback: (transaction: typeof prisma) => Promise<unknown>) =>
           callback(prisma),
@@ -72,10 +94,7 @@ describe('OrdersService', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [
-        OrdersService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [OrdersService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = module.get(OrdersService);
   });
@@ -106,6 +125,10 @@ describe('OrdersService', () => {
     expect(result.orderCode).toBe('BL-test');
     expect(prisma.order.create.mock.calls[0][0].select).toMatchObject({
       orderItems: true,
+    });
+    expect(createData.payments.create).toMatchObject({
+      amount: new Prisma.Decimal('50000'),
+      method: PaymentMethod.MOMO,
     });
     expect(prisma.product.updateMany).toHaveBeenCalledWith({
       where: {
@@ -274,6 +297,167 @@ describe('OrdersService', () => {
     });
   });
 
+  it('creates a pending payment for a selected mock provider', async () => {
+    await service.createOrderForUser(
+      Object.assign(new CreateOrderDto(), request, {
+        paymentMethod: 'SHOPEEPAY',
+      }),
+      userId,
+    );
+
+    expect(
+      prisma.order.create.mock.calls[0][0].data.payments.create,
+    ).toMatchObject({
+      amount: new Prisma.Decimal('50000'),
+      method: PaymentMethod.SHOPEEPAY,
+    });
+  });
+
+  it('does not create mock payments in production', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+
+    try {
+      await expect(
+        service.createOrderForUser(
+          Object.assign(new CreateOrderDto(), request, {
+            paymentMethod: 'MOMO',
+          }),
+          userId,
+        ),
+      ).rejects.toThrow('Mock payments are disabled in production');
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    }
+  });
+
+  it.each([
+    {
+      outcome: 'SUCCESS' as const,
+      paymentStatus: PaymentStatus.SUCCESS,
+      orderStatus: OrderStatus.CONFIRMED,
+      restoredStock: false,
+    },
+    {
+      outcome: 'FAILED' as const,
+      paymentStatus: PaymentStatus.FAILED,
+      orderStatus: OrderStatus.PAYMENT_FAILED,
+      restoredStock: true,
+    },
+    {
+      outcome: 'CANCELLED' as const,
+      paymentStatus: PaymentStatus.CANCELLED,
+      orderStatus: OrderStatus.CANCELLED,
+      restoredStock: true,
+    },
+  ])(
+    'records a mock payment outcome: $outcome',
+    async ({ outcome, paymentStatus, orderStatus, restoredStock }) => {
+      prisma.order.findFirst.mockResolvedValue({
+        id: 'order-id',
+        orderCode: 'BL-test',
+        userId,
+        status: OrderStatus.PENDING,
+        totalAmount: new Prisma.Decimal('59999.99'),
+        orderItems: [{ productId, quantity: 2 }],
+      });
+
+      await service.simulateMockPayment(
+        'order-id',
+        'payment-id',
+        { outcome, paymentMethod: 'SHOPEEPAY' },
+        userId,
+      );
+
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'payment-id',
+            orderId: 'order-id',
+            status: PaymentStatus.PENDING,
+            method: {
+              in: [
+                PaymentMethod.MOMO,
+                PaymentMethod.VNPAY,
+                PaymentMethod.SHOPEEPAY,
+              ],
+            },
+          },
+          data: expect.objectContaining({
+            method: PaymentMethod.SHOPEEPAY,
+            status: paymentStatus,
+          }),
+        }),
+      );
+      expect(prisma.order.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'order-id',
+          status: OrderStatus.PENDING,
+          userId,
+        },
+        data: { status: orderStatus },
+      });
+      expect(prisma.product.updateMany).toHaveBeenCalledTimes(
+        restoredStock ? 1 : 0,
+      );
+      if (outcome === 'SUCCESS') {
+        expect(prisma.user.update).toHaveBeenCalledWith({
+          where: { id: userId },
+          data: { loyaltyPoints: { increment: 5 } },
+          select: { loyaltyPoints: true },
+        });
+        expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+          data: {
+            userId,
+            orderId: 'order-id',
+            type: 'EARN',
+            points: 5,
+            balanceAfter: 5,
+            description: 'Tích điểm từ đơn BL-test',
+          },
+        });
+      } else {
+        expect(prisma.user.update).not.toHaveBeenCalled();
+        expect(prisma.loyaltyTransaction.create).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it('gets loyalty balance and the latest transactions', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      loyaltyPoints: 12,
+      loyaltyTransactions: [],
+    });
+
+    await expect(service.getLoyaltyForUser(userId)).resolves.toEqual({
+      balance: 12,
+      transactions: [],
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: userId },
+      select: {
+        loyaltyPoints: true,
+        loyaltyTransactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          select: {
+            id: true,
+            type: true,
+            points: true,
+            balanceAfter: true,
+            description: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+  });
+
   it('looks up guest orders only by hashed access tokens', async () => {
     const token = 'a'.repeat(64);
     await service.getGuestOrders([token]);
@@ -329,9 +513,9 @@ describe('OrdersService', () => {
   });
 
   it('does not reveal or modify an order without a matching owner token', async () => {
-    await expect(service.cancelOrder('order-id', undefined, [])).rejects.toThrow(
-      'Không tìm thấy đơn hàng',
-    );
+    await expect(
+      service.cancelOrder('order-id', undefined, []),
+    ).rejects.toThrow('Không tìm thấy đơn hàng');
 
     expect(prisma.order.findFirst).not.toHaveBeenCalled();
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
@@ -344,9 +528,9 @@ describe('OrdersService', () => {
       orderItems: [{ productId, quantity: 2 }],
     });
 
-    await expect(
-      service.cancelOrder('order-id', userId, []),
-    ).rejects.toThrow('Chỉ có thể hủy đơn hàng đang chờ xác nhận');
+    await expect(service.cancelOrder('order-id', userId, [])).rejects.toThrow(
+      'Chỉ có thể hủy đơn hàng đang chờ xác nhận',
+    );
 
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
     expect(prisma.product.updateMany).not.toHaveBeenCalled();

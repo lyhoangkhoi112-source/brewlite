@@ -54,11 +54,11 @@ export function ProductCatalog({
 
   return (
     <section>
-      <div className="my-7">
+      <div className="my-5 sm:my-7">
         <p className="text-sm leading-6 text-[#69746b]">
           Chọn món yêu thích hoặc tìm nhanh theo tên món.
         </p>
-        <label className="mt-5 flex max-w-2xl items-center gap-3 rounded-2xl border border-[#dce2da] bg-white px-4 py-3 shadow-sm focus-within:border-[#59775e] focus-within:ring-4 focus-within:ring-[#59775e]/10">
+        <label className="mt-4 flex min-h-12 max-w-2xl items-center gap-3 rounded-2xl border border-[#dce2da] bg-white px-4 py-3 shadow-sm focus-within:border-[#59775e] focus-within:ring-4 focus-within:ring-[#59775e]/10 sm:mt-5">
           <span aria-hidden="true" className="text-lg text-[#768279]">
             ⌕
           </span>
@@ -68,7 +68,7 @@ export function ProductCatalog({
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Tìm theo tên món..."
             aria-label="Tìm món theo tên"
-            className="w-full bg-transparent text-sm outline-none placeholder:text-[#a1aaa2]"
+            className="w-full bg-transparent text-base outline-none placeholder:text-[#a1aaa2]"
           />
         </label>
       </div>
@@ -90,7 +90,7 @@ export function ProductCatalog({
           <button
             type="button"
             onClick={onRetry}
-            className="mt-4 rounded-lg bg-[#304b39] px-4 py-2 text-sm font-semibold text-white hover:bg-[#243b2c]"
+            className="mt-4 min-h-11 rounded-lg bg-[#304b39] px-4 py-2 text-sm font-semibold text-white hover:bg-[#243b2c]"
           >
             Thử tải lại
           </button>
@@ -109,18 +109,18 @@ export function ProductCatalog({
             <section key={group.key} aria-labelledby={`category-${group.key}`}>
               <h2
                 id={`category-${group.key}`}
-                className="mb-4 text-xl font-semibold text-[#304b39]"
+                className="mb-4 text-lg font-semibold text-[#304b39] sm:text-xl"
               >
                 {group.label}
               </h2>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                 {group.products.map((product) => {
                   const isAvailable =
                     product.status === 'AVAILABLE' && product.stockQuantity > 0;
                   return (
                     <article
                       key={product.id}
-                      className="flex flex-row justify-between overflow-hidden rounded-2xl border border-[#e8e1d3] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      className="flex flex-col overflow-hidden rounded-2xl border border-[#e8e1d3] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md md:flex-row md:justify-between"
                     >
                       {product.imageUrl ? (
                         <Image
@@ -129,21 +129,21 @@ export function ProductCatalog({
                           width={640}
                           height={360}
                           unoptimized
-                          className="h-full min-h-44 w-2/5 object-cover"
+                          className="h-44 w-full object-cover md:h-full md:min-h-44 md:w-2/5"
                         />
                       ) : (
-                        <div className="flex min-h-44 w-2/5 shrink-0 items-center justify-center bg-[#edf2e9] px-2 text-center text-sm font-medium text-[#718074]">
+                        <div className="flex h-36 w-full shrink-0 items-center justify-center bg-[#edf2e9] px-2 text-center text-sm font-medium text-[#718074] md:h-auto md:min-h-44 md:w-2/5">
                           Chưa có hình món
                         </div>
                       )}
                       <div className="flex min-w-0 flex-1 flex-col justify-between p-4 sm:p-5">
                         <div>
                           <div className="flex items-start justify-between gap-3">
-                            <h3 className="text-lg font-semibold">
+                            <h3 className="min-w-0 text-base font-semibold sm:text-lg">
                               {product.name}
                             </h3>
                             <span
-                              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${isAvailable ? 'bg-[#edf2e9] text-[#405d47]' : 'bg-[#f4eeee] text-[#8b5a53]'}`}
+                              className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold sm:px-2.5 sm:text-xs ${isAvailable ? 'bg-[#edf2e9] text-[#405d47]' : 'bg-[#f4eeee] text-[#8b5a53]'}`}
                             >
                               {isAvailable ? 'Còn món' : 'Tạm hết'}
                             </span>
@@ -152,12 +152,12 @@ export function ProductCatalog({
                             {product.price.toLocaleString('vi-VN')} đ
                           </p>
                         </div>
-                        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5">
                           <button
                             type="button"
                             disabled={!isAvailable}
                             onClick={() => onBuyNow(product)}
-                            className="rounded-xl border border-[#dce2da] px-3 py-2.5 text-sm font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="min-h-11 rounded-xl border border-[#dce2da] px-2 py-2.5 text-xs font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-sm"
                           >
                             Mua ngay
                           </button>
@@ -165,7 +165,7 @@ export function ProductCatalog({
                             type="button"
                             disabled={!isAvailable}
                             onClick={() => onAddToCart(product)}
-                            className="rounded-xl bg-[#304b39] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:bg-[#d9ded8] disabled:text-[#788078]"
+                            className="min-h-11 rounded-xl bg-[#304b39] px-2 py-2.5 text-xs font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:bg-[#d9ded8] disabled:text-[#788078] sm:px-3 sm:text-sm"
                           >
                             Thêm vào giỏ
                           </button>

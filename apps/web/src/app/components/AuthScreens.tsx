@@ -60,40 +60,40 @@ export function AuthScreens(props: AuthScreensProps) {
 
   if (screen === 'welcome') {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f4ed] px-5 py-12 text-[#26352c]">
-        <section className="w-full max-w-3xl rounded-[2rem] border border-[#e8e1d3] bg-white p-8 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:p-14">
-          <div className="mb-10 inline-flex items-center gap-3 rounded-full bg-[#edf2e9] px-4 py-2 text-sm font-semibold text-[#405d47]">
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f4ed] px-3 py-6 text-[#26352c] sm:px-5 sm:py-12">
+        <section className="w-full max-w-3xl rounded-[1.5rem] border border-[#e8e1d3] bg-white p-5 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:rounded-[2rem] sm:p-14">
+          <div className="mb-7 inline-flex items-center gap-3 rounded-full bg-[#edf2e9] px-4 py-2 text-sm font-semibold text-[#405d47] sm:mb-10">
             <span aria-hidden="true">B</span>
             BrewLite
           </div>
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-[#9a6d3e]">
             Cà phê, theo cách của bạn
           </p>
-          <h1 className="max-w-xl text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
+          <h1 className="max-w-xl text-3xl font-semibold leading-tight tracking-tight sm:text-6xl">
             Một chút tỉnh táo, một chút thư thái.
           </h1>
-          <p className="mt-5 max-w-xl leading-7 text-[#69746b]">
+          <p className="mt-4 max-w-xl text-sm leading-7 text-[#69746b] sm:mt-5 sm:text-base">
             Đăng nhập để tiếp tục, hoặc xem thực đơn và tìm món bạn yêu thích.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
               onClick={onOpenLogin}
-              className="rounded-xl bg-[#304b39] px-6 py-3.5 font-semibold text-white transition hover:bg-[#243b2c]"
+              className="min-h-12 rounded-xl bg-[#304b39] px-6 py-3.5 font-semibold text-white transition hover:bg-[#243b2c]"
             >
               Đăng nhập
             </button>
             <button
               type="button"
               onClick={onOpenMenu}
-              className="rounded-xl border border-[#d8dfd6] px-6 py-3.5 font-semibold text-[#304b39] transition hover:bg-[#f4f7f2]"
+              className="min-h-12 rounded-xl border border-[#d8dfd6] px-6 py-3.5 font-semibold text-[#304b39] transition hover:bg-[#f4f7f2]"
             >
               Xem thực đơn
             </button>
             <button
               type="button"
               onClick={onOpenRegister}
-              className="rounded-xl border border-[#d8dfd6] px-6 py-3.5 font-semibold text-[#304b39] transition hover:bg-[#f4f7f2]"
+              className="min-h-12 rounded-xl border border-[#d8dfd6] px-6 py-3.5 font-semibold text-[#304b39] transition hover:bg-[#f4f7f2]"
             >
               Tạo tài khoản
             </button>
@@ -105,8 +105,8 @@ export function AuthScreens(props: AuthScreensProps) {
 
   if (screen === 'login') {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f4ed] px-5 py-12 text-[#26352c]">
-        <section className="w-full max-w-md rounded-[2rem] border border-[#e8e1d3] bg-white p-7 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:p-10">
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f4ed] px-3 py-6 text-[#26352c] sm:px-5 sm:py-12">
+        <section className="w-full max-w-md rounded-[1.5rem] border border-[#e8e1d3] bg-white p-5 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:rounded-[2rem] sm:p-10">
           <button
             type="button"
             onClick={onReturn}
@@ -187,8 +187,8 @@ export function AuthScreens(props: AuthScreensProps) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f4ed] px-5 py-12 text-[#26352c]">
-      <section className="w-full max-w-md rounded-[2rem] border border-[#e8e1d3] bg-white p-7 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:p-10">
+    <main className="flex min-h-screen items-center justify-center bg-[#f7f4ed] px-3 py-6 text-[#26352c] sm:px-5 sm:py-12">
+      <section className="w-full max-w-md rounded-[1.5rem] border border-[#e8e1d3] bg-white p-5 shadow-[0_24px_80px_rgba(47,57,45,0.10)] sm:rounded-[2rem] sm:p-10">
         <button
           type="button"
           onClick={onReturn}

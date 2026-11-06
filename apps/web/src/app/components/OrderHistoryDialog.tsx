@@ -1,10 +1,13 @@
 'use client';
 
-import type { OrderHistoryEntry } from '../types';
+import type { LoyaltySummary, OrderHistoryEntry } from '../types';
 
 interface OrderHistoryDialogProps {
   open: boolean;
   orders: OrderHistoryEntry[];
+  loyalty: LoyaltySummary | null;
+  loyaltyError: string | null;
+  loadingLoyalty: boolean;
   error: string | null;
   loading: boolean;
   cancellingOrderId: string | null;
@@ -42,6 +45,9 @@ const orderStatusLabels: Record<string, string> = {
 export function OrderHistoryDialog({
   open,
   orders,
+  loyalty,
+  loyaltyError,
+  loadingLoyalty,
   error,
   loading,
   cancellingOrderId,
@@ -51,30 +57,77 @@ export function OrderHistoryDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-0 sm:items-center sm:p-4">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="my-orders-heading"
-        className="my-auto max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+        className="my-auto max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-8"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
               Lịch sử mua hàng
             </p>
-            <h2 id="my-orders-heading" className="mt-2 text-2xl font-semibold">
+            <h2
+              id="my-orders-heading"
+              className="mt-2 text-xl font-semibold sm:text-2xl"
+            >
               Đơn hàng của tôi
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-[#dce2da] px-3 py-1 text-sm font-medium text-[#405d47]"
+            className="min-h-11 rounded-full border border-[#dce2da] px-3 py-1 text-sm font-medium text-[#405d47]"
           >
             Đóng
           </button>
         </div>
+
+        {(loyalty || loadingLoyalty || loyaltyError) && (
+          <section className="mt-5 rounded-2xl bg-[#edf2e9] p-4 sm:p-5">
+            <p className="text-sm font-medium text-[#405d47]">
+              Điểm khách hàng
+            </p>
+            <p className="mt-1 text-2xl font-semibold text-[#304b39]">
+              {loyalty
+                ? `${loyalty.balance.toLocaleString('vi-VN')} điểm`
+                : loadingLoyalty
+                  ? 'Đang tải...'
+                  : 'Chưa tải được điểm'}
+            </p>
+            <p className="mt-1 text-xs text-[#69746b]">
+              Mỗi 10.000 đ thanh toán nhận 1 điểm.
+            </p>
+            {loyaltyError && (
+              <p role="alert" className="mt-2 text-sm text-red-700">
+                {loyaltyError}
+              </p>
+            )}
+            {loyalty && loyalty.transactions.length > 0 && (
+              <ul className="mt-3 divide-y divide-[#dce6d8]">
+                {loyalty.transactions.slice(0, 5).map((transaction) => (
+                  <li
+                    key={transaction.id}
+                    className="flex justify-between gap-3 py-2 text-xs text-[#46544a]"
+                  >
+                    <span>
+                      {transaction.description ?? 'Biến động điểm'} ·{' '}
+                      {new Date(transaction.createdAt).toLocaleDateString(
+                        'vi-VN',
+                      )}
+                    </span>
+                    <span className="shrink-0 font-semibold">
+                      {transaction.points > 0 ? '+' : ''}
+                      {transaction.points}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         {error && (
           <p

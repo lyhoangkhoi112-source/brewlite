@@ -14,10 +14,8 @@ import {
   CreateOrderDto,
   GuestOrderAccessDto,
 } from './dto/create-order.dto.js';
-import {
-  GuestOrJwtAuthGuard,
-  JwtAuthGuard,
-} from './jwt-auth.guard.js';
+import { MockPaymentDto } from './dto/mock-payment.dto.js';
+import { GuestOrJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard.js';
 import { OrdersService } from './orders.service.js';
 
 interface AuthenticatedRequest extends Request {
@@ -37,10 +35,32 @@ export class OrdersController {
     return this.ordersService.createOrderForUser(input, request.user?.id);
   }
 
+  @Post(':id/payments/:paymentId/mock')
+  @UseGuards(GuestOrJwtAuthGuard)
+  simulateMockPayment(
+    @Param('id', new ParseUUIDPipe()) orderId: string,
+    @Param('paymentId', new ParseUUIDPipe()) paymentId: string,
+    @Body() input: MockPaymentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ordersService.simulateMockPayment(
+      orderId,
+      paymentId,
+      input,
+      request.user?.id,
+    );
+  }
+
   @Get('mine')
   @UseGuards(JwtAuthGuard)
   getMyOrders(@Req() request: AuthenticatedRequest) {
     return this.ordersService.getOrdersForUser(request.user!.id);
+  }
+
+  @Get('loyalty/mine')
+  @UseGuards(JwtAuthGuard)
+  getMyLoyalty(@Req() request: AuthenticatedRequest) {
+    return this.ordersService.getLoyaltyForUser(request.user!.id);
   }
 
   @Post('guest/history')

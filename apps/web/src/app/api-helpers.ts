@@ -1,7 +1,9 @@
 import type {
   LoginResult,
+  LoyaltySummary,
   OrderConfirmation,
   OrderHistoryEntry,
+  PaymentMethod,
   Product,
 } from './types';
 import { productCategories } from './types';
@@ -103,9 +105,11 @@ export function parseLoginResult(payload: unknown): LoginResult {
 export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
   if (
     !isRecord(payload) ||
+    typeof payload.id !== 'string' ||
     typeof payload.orderCode !== 'string' ||
     typeof payload.status !== 'string' ||
-    !Array.isArray(payload.orderItems)
+    !Array.isArray(payload.orderItems) ||
+    (payload.payments !== undefined && !Array.isArray(payload.payments))
   ) {
     throw new Error('Thông tin đơn hàng từ máy chủ không hợp lệ.');
   }
@@ -118,6 +122,7 @@ export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
   const orderItems = payload.orderItems.map((item: unknown) => {
     if (
       !isRecord(item) ||
+      typeof item.productId !== 'string' ||
       typeof item.productName !== 'string' ||
       typeof item.quantity !== 'number' ||
       (typeof item.subtotal !== 'string' && typeof item.subtotal !== 'number')
@@ -131,6 +136,7 @@ export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
     }
 
     return {
+      productId: item.productId,
       productName: item.productName,
       quantity: item.quantity,
       selectedSize:
@@ -144,11 +150,43 @@ export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
       subtotal,
     };
   });
+  const payments = (payload.payments ?? []).map((value: unknown) => {
+    if (
+      !isRecord(value) ||
+      typeof value.id !== 'string' ||
+      (typeof value.amount !== 'string' && typeof value.amount !== 'number') ||
+      typeof value.status !== 'string' ||
+      (value.method !== 'MOMO' &&
+        value.method !== 'VNPAY' &&
+        value.method !== 'SHOPEEPAY')
+    ) {
+      throw new Error('Thông tin thanh toán từ máy chủ không hợp lệ.');
+    }
+
+    const amount = Number(value.amount);
+    if (!Number.isFinite(amount)) {
+      throw new Error('Số tiền thanh toán từ máy chủ không hợp lệ.');
+    }
+    const method: PaymentMethod =
+      value.method === 'MOMO'
+        ? 'MOMO'
+        : value.method === 'VNPAY'
+          ? 'VNPAY'
+          : 'SHOPEEPAY';
+    return {
+      id: value.id,
+      amount,
+      method,
+      status: value.status,
+    };
+  });
 
   return {
+    id: payload.id,
     orderCode: payload.orderCode,
     status: payload.status,
     totalAmount,
+    payments,
     note: typeof payload.note === 'string' ? payload.note : null,
     shippingAddress:
       typeof payload.shippingAddress === 'string'
@@ -157,6 +195,44 @@ export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
     contactPhone:
       typeof payload.contactPhone === 'string' ? payload.contactPhone : null,
     orderItems,
+  };
+}
+
+export function parseLoyaltySummary(payload: unknown): LoyaltySummary {
+  if (
+    !isRecord(payload) ||
+    typeof payload.balance !== 'number' ||
+    !Array.isArray(payload.transactions)
+  ) {
+    throw new Error('Thông tin điểm khách hàng từ máy chủ không hợp lệ.');
+  }
+  return {
+    balance: payload.balance,
+    transactions: payload.transactions.map((transaction: unknown) => {
+      if (
+        !isRecord(transaction) ||
+        typeof transaction.id !== 'string' ||
+        typeof transaction.type !== 'string' ||
+        typeof transaction.points !== 'number' ||
+        typeof transaction.balanceAfter !== 'number' ||
+        typeof transaction.createdAt !== 'string' ||
+        (transaction.description !== null &&
+          typeof transaction.description !== 'string')
+      ) {
+        throw new Error('Lịch sử điểm khách hàng từ máy chủ không hợp lệ.');
+      }
+      return {
+        id: transaction.id,
+        type: transaction.type,
+        points: transaction.points,
+        balanceAfter: transaction.balanceAfter,
+        description:
+          typeof transaction.description === 'string'
+            ? transaction.description
+            : null,
+        createdAt: transaction.createdAt,
+      };
+    }),
   };
 }
 

@@ -56,6 +56,7 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   REFUNDED
+  CANCELLED
 }
 
 enum PaymentMethod {
@@ -63,6 +64,7 @@ enum PaymentMethod {
   MOMO
   VNPAY
   CREDIT_CARD
+  SHOPEEPAY
 }
 
 enum PromotionType {
@@ -93,6 +95,7 @@ model User {
   failedLoginAttempts Int      @default(0)
   loginLockoutStage   Int      @default(0)
   lockedUntil         DateTime?
+  loyaltyPoints       Int         @default(0)
 
   cart                Cart?
   orders              Order[]
@@ -157,6 +160,7 @@ model Order {
 
   orderItems OrderItem[]
   payments   Payment[]
+  loyaltyTransactions LoyaltyTransaction[]
 }
 
 model OrderItem {
@@ -209,6 +213,8 @@ model LoyaltyTransaction {
   id           String                 @id @default(uuid())
   userId       String
   user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId      String?                @unique
+  order        Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
   type         LoyaltyTransactionType
   points       Int
   balanceAfter Int

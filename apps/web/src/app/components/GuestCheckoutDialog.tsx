@@ -16,12 +16,12 @@ export function GuestCheckoutDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-choice-heading"
-        className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+        className="w-full max-w-md rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-8"
       >
         <h2 id="login-choice-heading" className="text-xl font-semibold">
           Bạn muốn đăng nhập không?
@@ -34,14 +34,14 @@ export function GuestCheckoutDialog({
           <button
             type="button"
             onClick={onLogin}
-            className="rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] hover:bg-[#f4f7f2]"
+            className="min-h-12 rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] hover:bg-[#f4f7f2]"
           >
             Đăng nhập
           </button>
           <button
             type="button"
             onClick={onContinueAsGuest}
-            className="rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white hover:bg-[#243b2c]"
+            className="min-h-12 rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white hover:bg-[#243b2c]"
           >
             Tiếp tục không đăng nhập
           </button>

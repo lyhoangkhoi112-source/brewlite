@@ -23,27 +23,27 @@ export function MenuHeader({
 }: MenuHeaderProps) {
   return (
     <header className="border-b border-[#e7e2d7] bg-white">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-8 sm:py-5">
         <div>
-          <p className="text-sm font-semibold tracking-wide text-[#59775e]">
+          <p className="text-xs font-semibold tracking-wide text-[#59775e] sm:text-sm">
             BREWLITE
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
             Thực đơn hôm nay
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={onOpenOrders}
-            className="rounded-full border border-[#dce2da] px-4 py-2 text-sm font-semibold text-[#405d47] hover:bg-[#f4f7f2]"
+            className="min-h-11 rounded-full border border-[#dce2da] px-3 py-2 text-xs font-semibold text-[#405d47] hover:bg-[#f4f7f2] sm:px-4 sm:text-sm"
           >
             Đơn hàng
           </button>
           <button
             type="button"
             onClick={onOpenCart}
-            className="rounded-full bg-[#edf2e9] px-4 py-2 text-sm font-semibold text-[#405d47] hover:bg-[#e2ecdf]"
+            className="min-h-11 rounded-full bg-[#edf2e9] px-3 py-2 text-xs font-semibold text-[#405d47] hover:bg-[#e2ecdf] sm:px-4 sm:text-sm"
             aria-label={`Mở giỏ hàng, ${cartCount} sản phẩm`}
           >
             Giỏ hàng · {cartCount}
@@ -56,7 +56,7 @@ export function MenuHeader({
               <button
                 type="button"
                 onClick={onLogout}
-                className="text-sm font-medium text-[#647268] hover:text-[#304b39]"
+                className="min-h-11 px-2 text-sm font-medium text-[#647268] hover:text-[#304b39]"
               >
                 Đăng xuất
               </button>
@@ -65,7 +65,7 @@ export function MenuHeader({
             <button
               type="button"
               onClick={onLogin}
-              className="text-sm font-medium text-[#405d47] hover:text-[#243b2c]"
+              className="min-h-11 px-2 text-sm font-medium text-[#405d47] hover:text-[#243b2c]"
             >
               Đăng nhập
             </button>
@@ -73,7 +73,7 @@ export function MenuHeader({
           <button
             type="button"
             onClick={onHome}
-            className="hidden text-sm font-medium text-[#647268] hover:text-[#304b39] sm:block"
+            className="hidden min-h-11 px-2 text-sm font-medium text-[#647268] hover:text-[#304b39] sm:block"
           >
             Trang chủ
           </button>

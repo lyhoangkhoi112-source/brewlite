@@ -32,15 +32,21 @@ export function OrderConfirmationDialog({
   if (!order) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-0 sm:items-center sm:p-4">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="order-confirmation-heading"
-        className="my-auto w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+        className="my-auto max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-8"
       >
         <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
-          Đặt hàng thành công
+          {order.status === 'CONFIRMED'
+            ? 'Đặt hàng thành công'
+            : order.status === 'PAYMENT_FAILED'
+              ? 'Thanh toán thất bại'
+              : order.status === 'CANCELLED'
+                ? 'Đơn hàng đã hủy'
+                : 'Đã tiếp nhận đơn hàng'}
         </p>
         <h2
           id="order-confirmation-heading"
@@ -51,6 +57,11 @@ export function OrderConfirmationDialog({
         <p className="mt-2 text-sm text-[#69746b]">
           Trạng thái: {order.status}
         </p>
+        {order.payments[0] && (
+          <p className="mt-2 text-sm text-[#69746b]">
+            Thanh toán: {order.payments[0].method} · {order.payments[0].status}
+          </p>
+        )}
         {(order.shippingAddress || order.contactPhone) && (
           <p className="mt-3 rounded-xl bg-[#f7f4ed] px-4 py-3 text-sm text-[#46544a]">
             Giao đến: {order.shippingAddress ?? '—'}
@@ -93,14 +104,14 @@ export function OrderConfirmationDialog({
           <button
             type="button"
             onClick={onViewOrders}
-            className="rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c]"
+            className="min-h-12 rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c]"
           >
             Xem đơn hàng
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2]"
+            className="min-h-12 rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2]"
           >
             Đóng
           </button>

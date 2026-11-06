@@ -1,17 +1,22 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { OrderStatus, Prisma, ProductStatus } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service.js';
 import {
-  CreateOrderDto,
-  CreateOrderItemDto,
-} from './dto/create-order.dto.js';
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+  Prisma,
+  ProductStatus,
+} from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto.js';
+import { MockPaymentDto } from './dto/mock-payment.dto.js';
 
 type OrderRequestItem = Pick<
   CreateOrderItemDto,
@@ -53,7 +58,14 @@ export class OrdersService {
     return this.createOrderForUser(input, undefined);
   }
 
-  async createOrderForUser(input: CreateOrderDto, authenticatedUserId?: string) {
+  async createOrderForUser(
+    input: CreateOrderDto,
+    authenticatedUserId?: string,
+  ) {
+    if (input.paymentMethod && process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Mock payments are disabled in production');
+    }
+
     const requestItems = getRequestItems(input);
     let userId: string | null = null;
     if (authenticatedUserId) {
@@ -172,28 +184,172 @@ export class OrdersService {
           orderItems: {
             create: orderItems,
           },
+          ...(process.env.NODE_ENV !== 'production'
+            ? {
+                payments: {
+                  create: {
+                    idempotencyKey: randomUUID(),
+                    amount: subtotal,
+                    method: input.paymentMethod ?? PaymentMethod.MOMO,
+                  },
+                },
+              }
+            : {}),
         },
+        select: this.orderConfirmationSelect(),
+      });
+    });
+
+    return guestAccessToken ? { ...order, guestAccessToken } : order;
+  }
+
+  async simulateMockPayment(
+    orderId: string,
+    paymentId: string,
+    input: MockPaymentDto,
+    userId: string | undefined,
+  ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Mock payments are disabled in production');
+    }
+
+    const access = userId
+      ? { userId }
+      : input.guestAccessToken
+        ? {
+            guestAccessTokenHash: this.hashGuestToken(input.guestAccessToken),
+          }
+        : null;
+    if (!access) {
+      throw new NotFoundException('Không tìm thấy đơn hàng');
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const order = await transaction.order.findFirst({
+        where: { id: orderId, ...access },
         select: {
           id: true,
           orderCode: true,
           userId: true,
           status: true,
-          subtotal: true,
-          discountAmount: true,
           totalAmount: true,
-          shippingAddress: true,
-          contactPhone: true,
-          note: true,
-          createdAt: true,
-          updatedAt: true,
-          orderItems: true,
+          orderItems: {
+            select: { productId: true, quantity: true },
+          },
         },
       });
-    });
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+      if (order.status !== OrderStatus.PENDING) {
+        throw new ConflictException('Đơn hàng đã được xử lý');
+      }
 
-    return guestAccessToken
-      ? { ...order, guestAccessToken }
-      : order;
+      const paymentStatus = {
+        SUCCESS: PaymentStatus.SUCCESS,
+        FAILED: PaymentStatus.FAILED,
+        CANCELLED: PaymentStatus.CANCELLED,
+      }[input.outcome];
+      const orderStatus = {
+        SUCCESS: OrderStatus.CONFIRMED,
+        FAILED: OrderStatus.PAYMENT_FAILED,
+        CANCELLED: OrderStatus.CANCELLED,
+      }[input.outcome];
+      const paymentUpdate = await transaction.payment.updateMany({
+        where: {
+          id: paymentId,
+          orderId,
+          status: PaymentStatus.PENDING,
+          method: {
+            in: [
+              PaymentMethod.MOMO,
+              PaymentMethod.VNPAY,
+              PaymentMethod.SHOPEEPAY,
+            ],
+          },
+        },
+        data: {
+          ...(input.paymentMethod ? { method: input.paymentMethod } : {}),
+          status: paymentStatus,
+          transactionId:
+            input.outcome === 'SUCCESS' ? `MOCK-${randomUUID()}` : null,
+          failureReason:
+            input.outcome === 'FAILED'
+              ? 'Mock payment failed'
+              : input.outcome === 'CANCELLED'
+                ? 'Mock payment cancelled'
+                : null,
+          paidAt: input.outcome === 'SUCCESS' ? new Date() : null,
+        },
+      });
+      if (paymentUpdate.count !== 1) {
+        throw new ConflictException('Giao dịch đã được xử lý');
+      }
+
+      const orderUpdate = await transaction.order.updateMany({
+        where: { id: orderId, status: OrderStatus.PENDING, ...access },
+        data: { status: orderStatus },
+      });
+      if (orderUpdate.count !== 1) {
+        throw new ConflictException('Đơn hàng đã được xử lý');
+      }
+
+      if (input.outcome !== 'SUCCESS') {
+        await this.restoreOrderStock(transaction, order.orderItems);
+      } else if (order.userId) {
+        const points = order.totalAmount.div(10_000).floor().toNumber();
+        if (points > 0) {
+          const user = await transaction.user.update({
+            where: { id: order.userId },
+            data: { loyaltyPoints: { increment: points } },
+            select: { loyaltyPoints: true },
+          });
+          await transaction.loyaltyTransaction.create({
+            data: {
+              userId: order.userId,
+              orderId: order.id,
+              type: 'EARN',
+              points,
+              balanceAfter: user.loyaltyPoints,
+              description: `Tích điểm từ đơn ${order.orderCode}`,
+            },
+          });
+        }
+      }
+
+      return transaction.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: this.orderConfirmationSelect(),
+      });
+    });
+  }
+
+  async getLoyaltyForUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        loyaltyPoints: true,
+        loyaltyTransactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          select: {
+            id: true,
+            type: true,
+            points: true,
+            balanceAfter: true,
+            description: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+    return {
+      balance: user.loyaltyPoints,
+      transactions: user.loyaltyTransactions,
+    };
   }
 
   async getOrdersForUser(userId: string) {
@@ -263,24 +419,7 @@ export class OrdersService {
         throw new ConflictException('Đơn hàng đã được xử lý');
       }
 
-      for (const item of order.orderItems) {
-        const restoredOutOfStock = await transaction.product.updateMany({
-          where: {
-            id: item.productId,
-            status: ProductStatus.OUT_OF_STOCK,
-          },
-          data: {
-            stockQuantity: { increment: item.quantity },
-            status: ProductStatus.AVAILABLE,
-          },
-        });
-        if (restoredOutOfStock.count === 0) {
-          await transaction.product.updateMany({
-            where: { id: item.productId },
-            data: { stockQuantity: { increment: item.quantity } },
-          });
-        }
-      }
+      await this.restoreOrderStock(transaction, order.orderItems);
 
       return transaction.order.findUniqueOrThrow({
         where: { id: orderId },
@@ -291,6 +430,51 @@ export class OrdersService {
 
   private hashGuestToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async restoreOrderStock(
+    transaction: Prisma.TransactionClient,
+    items: Array<{ productId: string; quantity: number }>,
+  ) {
+    for (const item of items) {
+      const restoredOutOfStock = await transaction.product.updateMany({
+        where: {
+          id: item.productId,
+          status: ProductStatus.OUT_OF_STOCK,
+        },
+        data: {
+          stockQuantity: { increment: item.quantity },
+          status: ProductStatus.AVAILABLE,
+        },
+      });
+      if (restoredOutOfStock.count === 0) {
+        await transaction.product.updateMany({
+          where: { id: item.productId },
+          data: { stockQuantity: { increment: item.quantity } },
+        });
+      }
+    }
+  }
+
+  private orderConfirmationSelect() {
+    return {
+      id: true,
+      orderCode: true,
+      userId: true,
+      status: true,
+      subtotal: true,
+      discountAmount: true,
+      totalAmount: true,
+      shippingAddress: true,
+      contactPhone: true,
+      note: true,
+      createdAt: true,
+      updatedAt: true,
+      orderItems: true,
+      payments: {
+        select: { id: true, amount: true, method: true, status: true },
+      },
+    } satisfies Prisma.OrderSelect;
   }
 
   private orderHistorySelect() {

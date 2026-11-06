@@ -20,7 +20,6 @@ interface ProductOptionsDialogProps {
   onIceChange: (value: string) => void;
   onNoteChange: (value: string) => void;
   onConfirm: () => void;
-  onAlternateAction: () => void;
 }
 
 export function ProductOptionsDialog({
@@ -40,17 +39,16 @@ export function ProductOptionsDialog({
   onIceChange,
   onNoteChange,
   onConfirm,
-  onAlternateAction,
 }: ProductOptionsDialogProps) {
   if (!product) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-black/40 p-0 sm:items-center sm:p-4">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="product-options-heading"
-        className="my-auto w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+        className="my-auto max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90vh] sm:max-w-lg sm:rounded-3xl sm:p-8"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -70,28 +68,30 @@ export function ProductOptionsDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full px-3 py-1 text-xl text-[#69746b] hover:bg-[#f4f7f2]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl text-[#69746b] hover:bg-[#f4f7f2]"
             aria-label="Đóng tùy chỉnh món"
           >
             ×
           </button>
         </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-medium text-[#46544a]">
-            Kích cỡ
-            <select
-              value={size}
-              onChange={(event) => onSizeChange(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
-            >
-              {['S', 'M', 'L'].map((option) => (
-                <option key={option} value={option}>
-                  Size {option}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-4">
+          {product.category !== 'TOPPING' && (
+            <label className="text-sm font-medium text-[#46544a]">
+              Kích cỡ
+              <select
+                value={size}
+                onChange={(event) => onSizeChange(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
+              >
+                {['S', 'M', 'L'].map((option) => (
+                  <option key={option} value={option}>
+                    Size {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="text-sm font-medium text-[#46544a]">
             Số lượng
             <input
@@ -104,37 +104,41 @@ export function ProductOptionsDialog({
                   Math.max(1, Number.parseInt(event.target.value, 10) || 1),
                 )
               }
-              className="mt-2 w-full rounded-xl border border-[#dce2da] px-3 py-3"
+              className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] px-3 py-3"
             />
           </label>
-          <label className="text-sm font-medium text-[#46544a]">
-            Lượng đường
-            <select
-              value={sugarLevel}
-              onChange={(event) => onSugarChange(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
-            >
-              {['0%', '50%', '100%'].map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-[#46544a]">
-            Lượng đá
-            <select
-              value={iceLevel}
-              onChange={(event) => onIceChange(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
-            >
-              {['0%', '50%', '100%'].map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-          </label>
+          {product.category !== 'TOPPING' && (
+            <>
+              <label className="text-sm font-medium text-[#46544a]">
+                Lượng đường
+                <select
+                  value={sugarLevel}
+                  onChange={(event) => onSugarChange(event.target.value)}
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
+                >
+                  {['25%', '50%', '75%', '100%'].map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-[#46544a]">
+                Lượng đá
+                <select
+                  value={iceLevel}
+                  onChange={(event) => onIceChange(event.target.value)}
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] bg-white px-3 py-3"
+                >
+                  {['0%', '50%', '100%'].map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
         </div>
 
         {intent === 'buyNow' && (
@@ -154,12 +158,12 @@ export function ProductOptionsDialog({
           </>
         )}
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="mt-5 grid gap-3 sm:mt-6 sm:grid-cols-2">
           <button
             type="button"
             disabled={isCreatingOrder}
             onClick={onConfirm}
-            className="rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-12 rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isCreatingOrder
               ? 'Đang đặt...'
@@ -170,10 +174,10 @@ export function ProductOptionsDialog({
           <button
             type="button"
             disabled={isCreatingOrder}
-            onClick={onAlternateAction}
-            className="rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onClose}
+            className="min-h-12 rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {intent === 'buyNow' ? 'Thêm vào giỏ' : 'Mua ngay'}
+            Quay lại
           </button>
         </div>
       </section>

@@ -8,6 +8,7 @@ import { CartDrawer } from './components/CartDrawer';
 import { DeliveryFields } from './components/DeliveryFields';
 import { GuestCheckoutDialog } from './components/GuestCheckoutDialog';
 import { MenuHeader } from './components/MenuHeader';
+import { MockPaymentDialog } from './components/MockPaymentDialog';
 import { OrderConfirmationDialog } from './components/OrderConfirmationDialog';
 import { OrderHistoryDialog } from './components/OrderHistoryDialog';
 import { ProductOptionsDialog } from './components/ProductOptionsDialog';
@@ -18,6 +19,7 @@ import {
   guestOrderTokensKey,
   isRecord,
   parseLoginResult,
+  parseLoyaltySummary,
   parseOrderConfirmation,
   parseOrderHistory,
   parseProducts,
@@ -25,10 +27,13 @@ import {
 } from './api-helpers';
 import type {
   AuthenticatedUser,
+  LoyaltySummary,
+  MockPaymentOutcome,
   OrderConfirmation,
   OrderHistoryEntry,
   OrderItemInput,
   OrderIntent,
+  PaymentMethod,
   PendingOrderAction,
   Product,
   Screen,
@@ -68,6 +73,7 @@ export default function MenuPage() {
   const [cartOrderNote, setCartOrderNote] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryPhone, setDeliveryPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('MOMO');
   const [deliveryValidationAttempted, setDeliveryValidationAttempted] =
     useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -77,10 +83,19 @@ export default function MenuPage() {
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [orderConfirmation, setOrderConfirmation] =
     useState<OrderConfirmation | null>(null);
+  const [pendingPaymentOrder, setPendingPaymentOrder] = useState<{
+    order: OrderConfirmation;
+    guestAccessToken: string | null;
+  } | null>(null);
+  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [myOrders, setMyOrders] = useState<OrderHistoryEntry[]>([]);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [loyalty, setLoyalty] = useState<LoyaltySummary | null>(null);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+  const [loadingLoyalty, setLoadingLoyalty] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(
     null,
   );
@@ -189,49 +204,34 @@ export default function MenuPage() {
   }
 
   function handleProductAction(product: Product, intent: OrderIntent) {
-    if (product.category !== 'TOPPING') {
-      showProductOptions(product, intent);
-      return;
-    }
-
-    if (intent === 'cart') {
+    if (product.category === 'TOPPING' && intent === 'cart') {
       addStandaloneProductToCart(product);
       return;
     }
-
-    void placeOrder(
-      [
-        {
-          productId: product.id,
-          quantity: 1,
-          selectedSize: 'M',
-          sugarLevel: '100%',
-          iceLevel: '100%',
-          selectedToppings: [],
-        },
-      ],
-      false,
-    );
+    showProductOptions(product, intent);
   }
 
   function addConfiguredProductToCart() {
     if (!configProduct) return;
 
     addItem({
-      id: JSON.stringify([
-        configProduct.id,
-        selectedSize,
-        sugarLevel,
-        iceLevel,
-      ]),
+      id:
+        configProduct.category === 'TOPPING'
+          ? JSON.stringify([configProduct.id])
+          : JSON.stringify([
+              configProduct.id,
+              selectedSize,
+              sugarLevel,
+              iceLevel,
+            ]),
       productId: configProduct.id,
       name: configProduct.name,
       price: configProduct.price,
       quantity: configuredQuantity,
       category: configProduct.category ?? undefined,
-      selectedSize,
-      sugarLevel,
-      iceLevel,
+      ...(configProduct.category === 'TOPPING'
+        ? {}
+        : { selectedSize, sugarLevel, iceLevel }),
       selectedToppings: [],
     });
     setCartNotice(`${configProduct.name} đã được thêm vào giỏ hàng.`);
@@ -281,6 +281,9 @@ export default function MenuPage() {
     setIsCreatingOrder(true);
     setOrderError(null);
     setDeliveryValidationAttempted(false);
+    setOrderConfirmation(null);
+    setPendingPaymentOrder(null);
+    setPaymentError(null);
 
     try {
       const response = await fetch(`${apiUrl}/orders`, {
@@ -302,6 +305,7 @@ export default function MenuPage() {
         throw new Error(readErrorMessage(payload, 'Không thể tạo đơn hàng.'));
       }
 
+      let guestAccessToken: string | null = null;
       if (!user) {
         if (
           !isRecord(payload) ||
@@ -311,8 +315,9 @@ export default function MenuPage() {
             'Máy chủ không trả về mã truy cập đơn hàng của khách.',
           );
         }
+        guestAccessToken = payload.guestAccessToken;
         const tokens = getGuestOrderTokens();
-        tokens.push(payload.guestAccessToken);
+        tokens.push(guestAccessToken);
         window.localStorage.setItem(
           guestOrderTokensKey,
           JSON.stringify(tokens),
@@ -343,15 +348,23 @@ export default function MenuPage() {
           };
         }),
       );
-      setOrderConfirmation({
+      const displayOrder = {
         ...confirmation,
-        orderItems: confirmation.orderItems.map((item, index) => ({
+        orderItems: confirmation.orderItems.map((item) => ({
           ...item,
           isStandaloneTopping:
-            products.find((product) => product.id === items[index]?.productId)
+            products.find((product) => product.id === item.productId)
               ?.category === 'TOPPING',
         })),
-      });
+      };
+      if (displayOrder.payments.length > 1) {
+        throw new Error('Máy chủ không tạo được giao dịch thanh toán.');
+      }
+      if (displayOrder.payments.length === 1) {
+        setPendingPaymentOrder({ order: displayOrder, guestAccessToken });
+      } else {
+        setOrderConfirmation(displayOrder);
+      }
       setConfigProduct(null);
       setCartOpen(false);
       if (clearCartAfterSuccess) {
@@ -368,6 +381,83 @@ export default function MenuPage() {
       );
     } finally {
       setIsCreatingOrder(false);
+    }
+  }
+
+  async function simulateMockPayment(outcome: MockPaymentOutcome) {
+    const pending = pendingPaymentOrder;
+    const payment = pending?.order.payments[0];
+    if (!pending || !payment) return;
+
+    setIsSimulatingPayment(true);
+    setPaymentError(null);
+    try {
+      const response = await fetch(
+        `${apiUrl}/orders/${encodeURIComponent(pending.order.id)}/payments/${encodeURIComponent(payment.id)}/mock`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            outcome,
+            paymentMethod,
+            ...(pending.guestAccessToken
+              ? { guestAccessToken: pending.guestAccessToken }
+              : {}),
+          }),
+        },
+      );
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          readErrorMessage(payload, 'Không thể xử lý giao dịch mô phỏng.'),
+        );
+      }
+
+      const updatedOrder = parseOrderConfirmation(payload);
+      if (updatedOrder.status !== 'CONFIRMED') {
+        const restoredQuantities = new Map<string, number>();
+        for (const item of updatedOrder.orderItems) {
+          restoredQuantities.set(
+            item.productId,
+            (restoredQuantities.get(item.productId) ?? 0) + item.quantity,
+          );
+        }
+        setProducts((current) =>
+          current.map((product) => {
+            const restored = restoredQuantities.get(product.id);
+            if (restored === undefined) return product;
+            const stockQuantity = product.stockQuantity + restored;
+            return {
+              ...product,
+              stockQuantity,
+              status: stockQuantity > 0 ? 'AVAILABLE' : product.status,
+            };
+          }),
+        );
+      }
+
+      setPendingPaymentOrder(null);
+      setOrderConfirmation({
+        ...updatedOrder,
+        orderItems: updatedOrder.orderItems.map((item) => ({
+          ...item,
+          isStandaloneTopping:
+            products.find((product) => product.id === item.productId)
+              ?.category === 'TOPPING',
+        })),
+      });
+      if (outcome === 'SUCCESS' && user) void loadLoyalty();
+    } catch (error) {
+      setPaymentError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể kết nối đến máy chủ.',
+      );
+    } finally {
+      setIsSimulatingPayment(false);
     }
   }
 
@@ -439,6 +529,33 @@ export default function MenuPage() {
     }
   }
 
+  async function loadLoyalty() {
+    if (!user || !accessToken) return;
+
+    setLoadingLoyalty(true);
+    setLoyaltyError(null);
+    try {
+      const response = await fetch(`${apiUrl}/orders/loyalty/mine`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          readErrorMessage(payload, 'Không thể tải điểm khách hàng.'),
+        );
+      }
+      setLoyalty(parseLoyaltySummary(payload));
+    } catch (error) {
+      setLoyaltyError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể kết nối đến máy chủ.',
+      );
+    } finally {
+      setLoadingLoyalty(false);
+    }
+  }
+
   async function cancelOrder(orderId: string) {
     setCancellingOrderId(orderId);
     setOrdersError(null);
@@ -495,6 +612,7 @@ export default function MenuPage() {
   function openOrderHistory() {
     setOrdersOpen(true);
     void loadOrderHistory();
+    if (user) void loadLoyalty();
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -597,6 +715,7 @@ export default function MenuPage() {
     setUser(null);
     setOrdersOpen(false);
     setMyOrders([]);
+    setLoyalty(null);
     setConfigProduct(null);
     setPendingOrderAction(null);
     setScreen('menu');
@@ -680,8 +799,7 @@ export default function MenuPage() {
         }}
       />
 
-      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-12">
-        {deliveryFields}
+      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-8 sm:py-8 lg:py-12">
         <ProductCatalog
           products={products}
           loading={loadingMenu}
@@ -737,11 +855,6 @@ export default function MenuPage() {
         onIceChange={setIceLevel}
         onNoteChange={setDirectOrderNote}
         onConfirm={confirmProductOptions}
-        onAlternateAction={() =>
-          configIntent === 'buyNow'
-            ? addConfiguredProductToCart()
-            : orderConfiguredProductNow()
-        }
       />
 
       <OrderConfirmationDialog
@@ -753,9 +866,21 @@ export default function MenuPage() {
         }}
       />
 
+      <MockPaymentDialog
+        order={pendingPaymentOrder?.order ?? null}
+        method={paymentMethod}
+        isProcessing={isSimulatingPayment}
+        error={paymentError}
+        onMethodChange={setPaymentMethod}
+        onSimulate={(outcome) => void simulateMockPayment(outcome)}
+      />
+
       <OrderHistoryDialog
         open={ordersOpen}
         orders={myOrders}
+        loyalty={user ? loyalty : null}
+        loyaltyError={user ? loyaltyError : null}
+        loadingLoyalty={Boolean(user) && loadingLoyalty}
         error={ordersError}
         loading={loadingOrders}
         cancellingOrderId={cancellingOrderId}
