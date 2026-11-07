@@ -10,8 +10,8 @@ export class MenuController {
         return this.menu.getMenu();
     }
 
-    @Get(':id')
-    async getMenuById(@Param('id') id: string): Promise<any> {
-        return this.menu.getMenuById(id);
+    @Get(':name')
+    async getMenuByName(@Param('name') name: string): Promise<any> {
+        return this.menu.getMenuByName(name);
     }
 }

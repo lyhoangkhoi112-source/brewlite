@@ -13,9 +13,9 @@ export class MenuService {
     return menuItems;
   }
 
-  async getMenuById(id: string): Promise<any> {
-    const menuItem = await this.prisma.product.findUnique({
-      where: { id },
+  async getMenuByName(name: string): Promise<any> {
+    const menuItem = await this.prisma.product.findFirst({
+      where: { name: name },
     });
 
     if (!menuItem) {
