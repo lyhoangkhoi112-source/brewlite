@@ -29,6 +29,16 @@ enum ProductStatus {
   OUT_OF_STOCK
 }
 
+enum ProductCategory {
+  COFFEE
+  MILK_TEA
+  FRUIT_TEA
+  MATCHA
+  ICE_BLEND
+  MACCHIATO
+  TOPPING
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -46,6 +56,7 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   REFUNDED
+  CANCELLED
 }
 
 enum PaymentMethod {
@@ -53,6 +64,7 @@ enum PaymentMethod {
   MOMO
   VNPAY
   CREDIT_CARD
+  SHOPEEPAY
 }
 
 enum PromotionType {
@@ -83,6 +95,7 @@ model User {
   failedLoginAttempts Int      @default(0)
   loginLockoutStage   Int      @default(0)
   lockedUntil         DateTime?
+  loyaltyPoints       Int         @default(0)
 
   cart                Cart?
   orders              Order[]
@@ -93,6 +106,7 @@ model Product {
   id            String        @id @default(uuid())
   name          String
   description   String?
+  category      ProductCategory?
   basePrice     Decimal       @db.Decimal(12, 2)
   stockQuantity Int           @default(0)
   imageUrl      String?
@@ -129,8 +143,9 @@ model CartItem {
 model Order {
   id              String      @id @default(uuid())
   orderCode       String      @unique
-  userId          String
-  user            User        @relation(fields: [userId], references: [id])
+  guestAccessTokenHash String? @unique
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   promotionId     String?
   promotion       Promotion?  @relation(fields: [promotionId], references: [id])
   status          OrderStatus @default(PENDING)
@@ -138,12 +153,14 @@ model Order {
   discountAmount  Decimal     @default(0) @db.Decimal(12, 2)
   totalAmount     Decimal     @db.Decimal(12, 2)
   shippingAddress String?
+  contactPhone    String?
   note            String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
   orderItems OrderItem[]
   payments   Payment[]
+  loyaltyTransactions LoyaltyTransaction[]
 }
 
 model OrderItem {
@@ -196,6 +213,8 @@ model LoyaltyTransaction {
   id           String                 @id @default(uuid())
   userId       String
   user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId      String?                @unique
+  order        Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
   type         LoyaltyTransactionType
   points       Int
   balanceAfter Int

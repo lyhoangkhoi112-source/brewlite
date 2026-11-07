@@ -7,6 +7,7 @@ export interface CartItem {
   name: string;
   price: number;
   quantity: number;
+  category?: string;
   selectedSize?: string;
   sugarLevel?: string;
   iceLevel?: string;
@@ -16,6 +17,10 @@ export interface CartItem {
 interface CartState {
   items: CartItem[];
   addItem: (item: CartItem) => void;
+  updateOptions: (
+    id: string,
+    options: Pick<CartItem, 'selectedSize' | 'sugarLevel' | 'iceLevel'>,
+  ) => void;
   updateQuantity: (id: string, quantity: number) => void;
   removeItem: (id: string) => void;
   clearCart: () => void;
@@ -36,6 +41,46 @@ export const useCartStore = create<CartState>()(
             };
           }
           return { items: [...state.items, newItem] };
+        }),
+      updateOptions: (id, options) =>
+        set((state) => {
+          const item = state.items.find((current) => current.id === id);
+          if (!item || item.category === 'TOPPING') return state;
+
+          const productId = item.productId ?? item.id;
+          const updatedItem = {
+            ...item,
+            ...options,
+            id: JSON.stringify([
+              productId,
+              options.selectedSize,
+              options.sugarLevel,
+              options.iceLevel,
+            ]),
+          };
+          const existingItem = state.items.find(
+            (current) => current.id === updatedItem.id && current.id !== id,
+          );
+          if (existingItem) {
+            return {
+              items: state.items
+                .filter((current) => current.id !== id)
+                .map((current) =>
+                  current.id === updatedItem.id
+                    ? {
+                        ...current,
+                        quantity: current.quantity + item.quantity,
+                      }
+                    : current,
+                ),
+            };
+          }
+
+          return {
+            items: state.items.map((current) =>
+              current.id === id ? updatedItem : current,
+            ),
+          };
         }),
       updateQuantity: (id, quantity) =>
         set((state) => ({
