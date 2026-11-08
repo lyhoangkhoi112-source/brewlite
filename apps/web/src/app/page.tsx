@@ -363,7 +363,6 @@ export default function MenuPage() {
         );
       }
 
-      const confirmation = parseOrderConfirmation(payload);
       const orderedQuantities = new Map<string, number>();
       for (const item of items) {
         orderedQuantities.set(
