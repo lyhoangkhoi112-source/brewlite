@@ -52,6 +52,20 @@ export class ProductsService {
     return product;
   }
 
+  async create(input: CreateProductDto): Promise<Product> {
+    const product = this.normalizeCreateInput(input);
+    await this.ensureActiveNamesAvailable([product]);
+
+    try {
+      return await this.prisma.product.create({
+        data: this.toCreateData(product),
+      });
+    } catch (error) {
+      this.throwIfDuplicateName(error);
+      throw error;
+    }
+  }
+
   async createProducts(products: CreateProductDto[]) {
     const normalizedProducts = products.map((product) =>
       this.normalizeCreateInput(product),
