@@ -23,7 +23,9 @@ export function MockPaymentDialog({
   onMethodChange,
   onSimulate,
 }: MockPaymentDialogProps) {
-  const payment = order?.payments[0];
+  const payment =
+    order?.payments.find((candidate) => candidate.status === 'PENDING') ??
+    order?.payments[0];
   if (!order || !payment) return null;
 
   return (

@@ -15,6 +15,7 @@ import {
   GuestOrderAccessDto,
 } from './dto/create-order.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
+import { RetryMockPaymentDto } from './dto/retry-mock-payment.dto.js';
 import { GuestOrJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard.js';
 import { OrdersService } from './orders.service.js';
 
@@ -46,6 +47,20 @@ export class OrdersController {
     return this.ordersService.simulateMockPayment(
       orderId,
       paymentId,
+      input,
+      request.user?.id,
+    );
+  }
+
+  @Post(':id/payments/retry')
+  @UseGuards(GuestOrJwtAuthGuard)
+  retryMockPayment(
+    @Param('id', new ParseUUIDPipe()) orderId: string,
+    @Body() input: RetryMockPaymentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ordersService.retryMockPayment(
+      orderId,
       input,
       request.user?.id,
     );
