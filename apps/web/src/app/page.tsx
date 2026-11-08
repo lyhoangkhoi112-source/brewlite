@@ -313,6 +313,37 @@ export default function MenuPage() {
         throw new Error(readErrorMessage(payload, 'Không thể tạo đơn hàng.'));
       }
 
+      const confirmation = parseOrderConfirmation(payload);
+      setOrderConfirmation(confirmation);
+
+      // =========================================================================
+      // THÊM ĐOẠN NÀY: TỰ ĐỘNG ĐẨY ĐƠN HÀNG SANG TRANG NHÂN VIÊN VÀ LƯU BỘ NHỚ
+      // =========================================================================
+      try {
+        const existingOrders = JSON.parse(
+          localStorage.getItem('brewlite_orders') || '[]'
+        );
+
+        const newOrderForStaff = {
+          id: confirmation.orderCode || `BL${Date.now().toString().slice(-3)}`,
+          customer: user?.fullName || 'Khách hàng',
+          items: confirmation.orderItems.map(
+            (item) => `${item.productName} (Size ${item.selectedSize ?? 'M'}) x${item.quantity}`
+          ),
+          total: confirmation.totalAmount,
+          status: 'PENDING',
+          note: note.trim() || undefined,
+        };
+
+        localStorage.setItem(
+          'brewlite_orders',
+          JSON.stringify([newOrderForStaff, ...existingOrders])
+        );
+      } catch (err) {
+        console.error('Lỗi khi đồng bộ đơn tới LocalStorage:', err);
+      }
+      // =========================================================================
+
       let guestAccessToken: string | null = null;
       if (!user) {
         if (
