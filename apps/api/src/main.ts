@@ -8,7 +8,9 @@ import { ApiExceptionFilter } from './response/api-exception.filter.js';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors(); // Bật CORS để Next.js gọi API
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true })); // Lọc dữ liệu DTO
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true }),
+  ); // Lọc và chuyển đổi dữ liệu DTO
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
