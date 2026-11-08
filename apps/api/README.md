@@ -129,6 +129,54 @@ Product prices and order totals come from the database; price, status,
 timestamps, and order codes are not accepted from the client. The response
 includes the order code, status, totals, and saved order items for confirmation.
 
+## Manage products
+
+Product management endpoints require an active `MANAGER` bearer token:
+
+- `GET /products?search=latte&category=COFFEE&status=AVAILABLE` searches by
+  name and optionally filters by category and status. Omit filters to list all
+  products, including unavailable ones.
+- `GET /products/:id` finds one product.
+- `POST /products` creates a product with `name` and numeric `basePrice`;
+  `description`, `category`, `stockQuantity`, `imageUrl`, and `status` are
+  optional. Active product names must be unique regardless of letter case;
+  names belonging only to `UNAVAILABLE` products can be reused.
+- `PATCH /products/:id` updates only supplied product fields.
+- `DELETE /products/:id` soft-deletes by setting `status` to `UNAVAILABLE`.
+  The row and its order history remain in the database.
+
+The migration adds a PostgreSQL partial unique index for active names. If the
+database already contains active products whose names differ only by case,
+resolve those duplicates before applying the migration.
+
+## Manage staff and customers
+
+These endpoints require an active `MANAGER` bearer token. They only manage
+`STAFF` and `CUSTOMER` accounts; manager accounts cannot be changed here.
+
+- `GET /users?search=hoa&role=STAFF&status=ACTIVE` searches by name or email
+  and optionally filters by role and status. Without a role filter, staff and
+  customer accounts are returned.
+- `GET /users/:id` gets one staff or customer account.
+- `POST /users` creates a customer by default, or a staff account when
+  `role` is `STAFF`. Passwords are hashed and never returned.
+- `PATCH /users/:id` updates supplied account fields, including activation
+  state. `BLOCKED` is reserved for the login lockout flow.
+- `DELETE /users/:id` soft-deletes the account by setting status to `INACTIVE`.
+- `POST /users/:id/unlock` reactivates a permanently blocked account and
+  resets its failed-login count, lockout stage, and lock expiration.
+
+## Manager statistics
+
+Statistics endpoints require an active `MANAGER` bearer token:
+
+- `GET /statistics/monthly-revenue?year=2026` returns the successful payment
+  revenue for each month of the requested year, grouped by payment `paidAt`.
+  The current year is used when `year` is omitted.
+- `GET /statistics/inventory` returns stock quantities for products that are
+  not `UNAVAILABLE`, marks products with fewer than 10 items, and lists those
+  low-stock products separately.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
