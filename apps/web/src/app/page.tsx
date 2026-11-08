@@ -36,8 +36,10 @@ import type {
   PaymentMethod,
   PendingOrderAction,
   Product,
+  ProductMenuCategory,
   Screen,
 } from './types';
+import { productCategories } from './types';
 
 const guestCheckoutPreferenceKey = 'brewlite-guest-checkout';
 
@@ -47,6 +49,9 @@ export default function MenuPage() {
   const [loadingMenu, setLoadingMenu] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [searchName, setSearchName] = useState('');
+  const [selectedMenuCategory, setSelectedMenuCategory] =
+    useState<ProductMenuCategory>('ALL');
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -99,6 +104,9 @@ export default function MenuPage() {
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(
     null,
   );
+  const [retryingPaymentOrderId, setRetryingPaymentOrderId] = useState<
+    string | null
+  >(null);
 
   const addItem = useCartStore((state) => state.addItem);
   const updateCartOptions = useCartStore((state) => state.updateOptions);
@@ -305,6 +313,37 @@ export default function MenuPage() {
         throw new Error(readErrorMessage(payload, 'Không thể tạo đơn hàng.'));
       }
 
+      const confirmation = parseOrderConfirmation(payload);
+      setOrderConfirmation(confirmation);
+
+      // =========================================================================
+      // THÊM ĐOẠN NÀY: TỰ ĐỘNG ĐẨY ĐƠN HÀNG SANG TRANG NHÂN VIÊN VÀ LƯU BỘ NHỚ
+      // =========================================================================
+      try {
+        const existingOrders = JSON.parse(
+          localStorage.getItem('brewlite_orders') || '[]'
+        );
+
+        const newOrderForStaff = {
+          id: confirmation.orderCode || `BL${Date.now().toString().slice(-3)}`,
+          customer: user?.fullName || 'Khách hàng',
+          items: confirmation.orderItems.map(
+            (item) => `${item.productName} (Size ${item.selectedSize ?? 'M'}) x${item.quantity}`
+          ),
+          total: confirmation.totalAmount,
+          status: 'PENDING',
+          note: note.trim() || undefined,
+        };
+
+        localStorage.setItem(
+          'brewlite_orders',
+          JSON.stringify([newOrderForStaff, ...existingOrders])
+        );
+      } catch (err) {
+        console.error('Lỗi khi đồng bộ đơn tới LocalStorage:', err);
+      }
+      // =========================================================================
+
       let guestAccessToken: string | null = null;
       if (!user) {
         if (
@@ -386,7 +425,9 @@ export default function MenuPage() {
 
   async function simulateMockPayment(outcome: MockPaymentOutcome) {
     const pending = pendingPaymentOrder;
-    const payment = pending?.order.payments[0];
+    const payment = pending?.order.payments.find(
+      (candidate) => candidate.status === 'PENDING',
+    );
     if (!pending || !payment) return;
 
     setIsSimulatingPayment(true);
@@ -609,6 +650,85 @@ export default function MenuPage() {
     }
   }
 
+  async function retryPayment(orderId: string) {
+    setRetryingPaymentOrderId(orderId);
+    setOrdersError(null);
+    try {
+      const tokens = user ? [] : getGuestOrderTokens();
+      const guestTokens = user ? [null] : tokens;
+      if (guestTokens.length === 0) {
+        throw new Error(
+          'Không tìm thấy mã truy cập đơn hàng trên thiết bị này.',
+        );
+      }
+
+      let retriedOrder: OrderConfirmation | null = null;
+      let guestAccessToken: string | null = null;
+      for (const token of guestTokens) {
+        const response = await fetch(
+          `${apiUrl}/orders/${encodeURIComponent(orderId)}/payments/retry`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(user && accessToken
+                ? { Authorization: `Bearer ${accessToken}` }
+                : {}),
+            },
+            body: JSON.stringify({
+              paymentMethod,
+              ...(token ? { guestAccessToken: token } : {}),
+            }),
+          },
+        );
+        const payload: unknown = await response.json();
+        if (response.status === 404 && !user) continue;
+        if (!response.ok) {
+          throw new Error(
+            readErrorMessage(payload, 'Không thể thanh toán lại đơn hàng.'),
+          );
+        }
+        retriedOrder = parseOrderConfirmation(payload);
+        guestAccessToken = token;
+        break;
+      }
+
+      if (!retriedOrder) {
+        throw new Error('Không tìm thấy đơn hàng cần thanh toán lại.');
+      }
+
+      const reservedQuantities = new Map<string, number>();
+      for (const item of retriedOrder.orderItems) {
+        reservedQuantities.set(
+          item.productId,
+          (reservedQuantities.get(item.productId) ?? 0) + item.quantity,
+        );
+      }
+      setProducts((current) =>
+        current.map((product) => {
+          const reserved = reservedQuantities.get(product.id);
+          if (reserved === undefined) return product;
+          const stockQuantity = Math.max(0, product.stockQuantity - reserved);
+          return {
+            ...product,
+            stockQuantity,
+            status: stockQuantity === 0 ? 'OUT_OF_STOCK' : product.status,
+          };
+        }),
+      );
+      setOrdersOpen(false);
+      setPendingPaymentOrder({ order: retriedOrder, guestAccessToken });
+    } catch (error) {
+      setOrdersError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể kết nối đến máy chủ.',
+      );
+    } finally {
+      setRetryingPaymentOrderId(null);
+    }
+  }
+
   function openOrderHistory() {
     setOrdersOpen(true);
     void loadOrderHistory();
@@ -784,8 +904,19 @@ export default function MenuPage() {
       <MenuHeader
         user={user}
         cartCount={cartCount}
+        selectedCategoryLabel={
+          selectedMenuCategory === 'ALL'
+            ? 'Tất cả món'
+            : selectedMenuCategory === 'UNCATEGORIZED'
+              ? 'Chưa phân loại'
+              : (productCategories.find(
+                  ({ value }) => value === selectedMenuCategory,
+                )?.label ?? 'Tất cả món')
+        }
+        categoryMenuOpen={categoryMenuOpen}
         onOpenOrders={openOrderHistory}
         onOpenCart={() => setCartOpen(true)}
+        onOpenCategories={() => setCategoryMenuOpen(true)}
         onLogout={logout}
         onLogin={() => {
           setAuthReturnScreen('menu');
@@ -805,7 +936,11 @@ export default function MenuPage() {
           loading={loadingMenu}
           error={menuError}
           searchName={searchName}
+          selectedCategory={selectedMenuCategory}
+          categoryMenuOpen={categoryMenuOpen}
           onSearchChange={setSearchName}
+          onSelectCategory={setSelectedMenuCategory}
+          onCloseCategoryMenu={() => setCategoryMenuOpen(false)}
           onRetry={() => void loadMenu(accessToken)}
           onBuyNow={(product) => openProductOptions(product, 'buyNow')}
           onAddToCart={(product) => openProductOptions(product, 'cart')}
@@ -884,8 +1019,10 @@ export default function MenuPage() {
         error={ordersError}
         loading={loadingOrders}
         cancellingOrderId={cancellingOrderId}
+        retryingPaymentOrderId={retryingPaymentOrderId}
         onClose={() => setOrdersOpen(false)}
         onCancelOrder={(orderId) => void cancelOrder(orderId)}
+        onRetryPayment={(orderId) => void retryPayment(orderId)}
       />
     </main>
   );

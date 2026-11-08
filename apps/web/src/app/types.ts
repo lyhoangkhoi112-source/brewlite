@@ -10,6 +10,7 @@ export const productCategories = [
 
 export type Screen = 'welcome' | 'login' | 'register' | 'menu';
 export type ProductCategory = (typeof productCategories)[number]['value'];
+export type ProductMenuCategory = ProductCategory | 'ALL' | 'UNCATEGORIZED';
 export type OrderIntent = 'buyNow' | 'cart';
 export type PaymentMethod = 'MOMO' | 'VNPAY' | 'SHOPEEPAY';
 export type MockPaymentOutcome = 'SUCCESS' | 'FAILED' | 'CANCELLED';
