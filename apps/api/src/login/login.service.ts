@@ -48,7 +48,11 @@ export class LoginService {
       where: { email: credentials.email },
     });
 
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    if (!user || user.status === UserStatus.INACTIVE) {
+      throw new UnauthorizedException('Tài khoản không tồn tại');
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Tài khoản không tồn tại hoặc đã bị khóa');
     }
 
@@ -88,6 +92,7 @@ export class LoginService {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
+        phone: user.phone,
         role: user.role,
       },
     };

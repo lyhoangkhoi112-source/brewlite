@@ -105,9 +105,25 @@ options are preserved. `note` is optional and limited to 500 characters. A cart
 may contain multiple lines for the same product when their customizations differ;
 the API checks the combined quantity against available stock.
 
-Supported options are sizes `S`, `M`, and `L`; sugar and ice levels `0%`, `50%`,
-and `100%`; and toppings `trân châu`, `pudding`, and `thạch`. These options do
-not add a surcharge in the current version.
+Supported options are sizes `S`, `M`, and `L`; sugar levels `25%`, `50%`,
+`75%`, and `100%`; ice levels `0%`, `50%`, and `100%`; and toppings
+`trân châu`, `pudding`, and `thạch`. These options do not add a surcharge in
+the current version.
+
+In local development, a pending mock payment is created with each order. The
+user selects `MOMO`, `VNPAY`, or `SHOPEEPAY` after placing the order and submits
+an outcome (`SUCCESS`, `FAILED`, or `CANCELLED`) to
+`POST /orders/:orderId/payments/:paymentId/mock`. Guest orders must include
+their `guestAccessToken`; authenticated orders use the bearer token. A
+successful outcome confirms the order; failure or cancellation restores the
+reserved stock. Mock payment is disabled in production and does not connect to
+a real provider or move money.
+
+After a successful payment, registered customers earn one loyalty point for
+each 10,000 VND in the paid order total, rounded down per order. Guest orders do
+not earn points. `GET /orders/loyalty/mine` returns the authenticated
+customer's balance and up to 100 recent transactions. Point redemption is not
+included.
 
 Product prices and order totals come from the database; price, status,
 timestamps, and order codes are not accepted from the client. The response

@@ -12,6 +12,7 @@ describe('LoginService', () => {
     id: string;
     fullName: string;
     email: string;
+    phone: string | null;
     passwordHash: string;
     role: UserRole;
     status: UserStatus;
@@ -32,6 +33,7 @@ describe('LoginService', () => {
       id: 'user-id',
       fullName: 'Test User',
       email: 'user@example.com',
+      phone: '0901234567',
       passwordHash: bcrypt.hashSync('correct-password', 4),
       role: UserRole.CUSTOMER,
       status: UserStatus.ACTIVE,
@@ -132,8 +134,20 @@ describe('LoginService', () => {
     });
 
     expect(result.accessToken).toBe('signed-token');
+    expect(result.user.phone).toBe(user.phone);
     expect(user.failedLoginAttempts).toBe(0);
     expect(user.loginLockoutStage).toBe(0);
     expect(user.lockedUntil).toBeNull();
+  });
+
+  it('reports inactive accounts as nonexistent', async () => {
+    user.status = UserStatus.INACTIVE;
+
+    await expect(
+      service.login({ email: user.email, password: 'correct-password' }),
+    ).rejects.toThrow('Tài khoản không tồn tại');
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(jwt.signAsync).not.toHaveBeenCalled();
   });
 });
