@@ -13,10 +13,12 @@ import {
   PaymentStatus,
   Prisma,
   ProductStatus,
+  UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
+import { RetryMockPaymentDto } from './dto/retry-mock-payment.dto.js';
 
 type OrderRequestItem = Pick<
   CreateOrderItemDto,
@@ -71,10 +73,13 @@ export class OrdersService {
     if (authenticatedUserId) {
       const user = await this.prisma.user.findUnique({
         where: { id: authenticatedUserId },
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (!user) {
         throw new NotFoundException('Không tìm thấy người dùng');
+      }
+      if (user.status !== UserStatus.ACTIVE) {
+        throw new ForbiddenException('Tài khoản không còn hoạt động');
       }
       userId = user.id;
     }
@@ -316,6 +321,108 @@ export class OrdersService {
           });
         }
       }
+
+      return transaction.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: this.orderConfirmationSelect(),
+      });
+    });
+  }
+
+  async retryMockPayment(
+    orderId: string,
+    input: RetryMockPaymentDto,
+    userId: string | undefined,
+  ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Mock payments are disabled in production');
+    }
+
+    const access = userId
+      ? { userId }
+      : input.guestAccessToken
+        ? {
+            guestAccessTokenHash: this.hashGuestToken(input.guestAccessToken),
+          }
+        : null;
+    if (!access) {
+      throw new NotFoundException('Không tìm thấy đơn hàng');
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const order = await transaction.order.findFirst({
+        where: { id: orderId, ...access },
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          orderItems: {
+            select: { productId: true, quantity: true },
+          },
+        },
+      });
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+      if (order.status !== OrderStatus.PAYMENT_FAILED) {
+        throw new ConflictException(
+          'Chỉ có thể thanh toán lại đơn hàng thất bại',
+        );
+      }
+
+      const quantities = new Map<string, number>();
+      for (const item of order.orderItems) {
+        quantities.set(
+          item.productId,
+          (quantities.get(item.productId) ?? 0) + item.quantity,
+        );
+      }
+
+      for (const [productId, quantity] of quantities) {
+        const reserved = await transaction.product.updateMany({
+          where: {
+            id: productId,
+            status: ProductStatus.AVAILABLE,
+            stockQuantity: { gte: quantity },
+          },
+          data: { stockQuantity: { decrement: quantity } },
+        });
+        if (reserved.count !== 1) {
+          throw new UnprocessableEntityException(
+            'Sản phẩm trong đơn hiện không đủ số lượng để thanh toán lại',
+          );
+        }
+
+        await transaction.product.updateMany({
+          where: {
+            id: productId,
+            status: ProductStatus.AVAILABLE,
+            stockQuantity: 0,
+          },
+          data: { status: ProductStatus.OUT_OF_STOCK },
+        });
+      }
+
+      const reopened = await transaction.order.updateMany({
+        where: {
+          id: orderId,
+          status: OrderStatus.PAYMENT_FAILED,
+          ...access,
+        },
+        data: { status: OrderStatus.PENDING },
+      });
+      if (reopened.count !== 1) {
+        throw new ConflictException('Đơn hàng đã được xử lý');
+      }
+
+      await transaction.payment.create({
+        data: {
+          orderId,
+          idempotencyKey: randomUUID(),
+          amount: order.totalAmount,
+          method: input.paymentMethod ?? PaymentMethod.MOMO,
+        },
+      });
 
       return transaction.order.findUniqueOrThrow({
         where: { id: orderId },

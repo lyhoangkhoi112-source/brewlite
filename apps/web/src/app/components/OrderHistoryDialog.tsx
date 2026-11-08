@@ -11,8 +11,10 @@ interface OrderHistoryDialogProps {
   error: string | null;
   loading: boolean;
   cancellingOrderId: string | null;
+  retryingPaymentOrderId: string | null;
   onClose: () => void;
   onCancelOrder: (orderId: string) => void;
+  onRetryPayment: (orderId: string) => void;
 }
 
 function formatToppings(value: string | null): string {
@@ -51,8 +53,10 @@ export function OrderHistoryDialog({
   error,
   loading,
   cancellingOrderId,
+  retryingPaymentOrderId,
   onClose,
   onCancelOrder,
+  onRetryPayment,
 }: OrderHistoryDialogProps) {
   if (!open) return null;
 
@@ -207,18 +211,38 @@ export function OrderHistoryDialog({
                   <p className="text-base font-semibold">
                     Tổng cộng: {order.totalAmount.toLocaleString('vi-VN')} đ
                   </p>
-                  {order.status === 'PENDING' && (
-                    <button
-                      type="button"
-                      disabled={cancellingOrderId !== null}
-                      onClick={() => onCancelOrder(order.id)}
-                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {cancellingOrderId === order.id
-                        ? 'Đang hủy...'
-                        : 'Hủy đơn hàng'}
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === 'PAYMENT_FAILED' && (
+                      <button
+                        type="button"
+                        disabled={
+                          cancellingOrderId !== null ||
+                          retryingPaymentOrderId !== null
+                        }
+                        onClick={() => onRetryPayment(order.id)}
+                        className="rounded-xl bg-[#304b39] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {retryingPaymentOrderId === order.id
+                          ? 'Đang xử lý...'
+                          : 'Thanh toán lại'}
+                      </button>
+                    )}
+                    {order.status === 'PENDING' && (
+                      <button
+                        type="button"
+                        disabled={
+                          cancellingOrderId !== null ||
+                          retryingPaymentOrderId !== null
+                        }
+                        onClick={() => onCancelOrder(order.id)}
+                        className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {cancellingOrderId === order.id
+                          ? 'Đang hủy...'
+                          : 'Hủy đơn hàng'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}

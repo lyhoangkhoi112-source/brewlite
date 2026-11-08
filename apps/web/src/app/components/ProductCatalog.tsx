@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import type { Product } from '../types';
+import type { Product, ProductMenuCategory } from '../types';
 import { productCategories } from '../types';
 
 interface ProductCatalogProps {
@@ -9,7 +9,11 @@ interface ProductCatalogProps {
   loading: boolean;
   error: string | null;
   searchName: string;
+  selectedCategory: ProductMenuCategory;
+  categoryMenuOpen: boolean;
   onSearchChange: (value: string) => void;
+  onSelectCategory: (value: ProductMenuCategory) => void;
+  onCloseCategoryMenu: () => void;
   onRetry: () => void;
   onBuyNow: (product: Product) => void;
   onAddToCart: (product: Product) => void;
@@ -20,16 +24,31 @@ export function ProductCatalog({
   loading,
   error,
   searchName,
+  selectedCategory,
+  categoryMenuOpen,
   onSearchChange,
+  onSelectCategory,
+  onCloseCategoryMenu,
   onRetry,
   onBuyNow,
   onAddToCart,
 }: ProductCatalogProps) {
-  const visibleProducts = products.filter((product) =>
+  const menuProducts = products.filter(
+    (product) => product.status !== 'UNAVAILABLE',
+  );
+  const searchedProducts = menuProducts.filter((product) =>
     product.name
       .toLocaleLowerCase()
       .includes(searchName.trim().toLocaleLowerCase()),
   );
+  const visibleProducts =
+    selectedCategory === 'ALL'
+      ? searchedProducts
+      : selectedCategory === 'UNCATEGORIZED'
+        ? searchedProducts.filter((product) => product.category === null)
+        : searchedProducts.filter(
+            (product) => product.category === selectedCategory,
+          );
   const groupedProducts: Array<{
     key: string;
     label: string;
@@ -51,6 +70,30 @@ export function ProductCatalog({
       products: uncategorizedProducts,
     });
   }
+  const categoryChoices = [
+    { value: 'ALL' as const, label: 'Tất cả món', count: searchedProducts.length },
+    ...productCategories
+      .map(({ value, label }) => ({
+        value,
+        label,
+        count: searchedProducts.filter((product) => product.category === value)
+          .length,
+      }))
+      .filter((category) => category.count > 0),
+    ...(searchedProducts.some((product) => product.category === null)
+      ? [
+          {
+            value: 'UNCATEGORIZED' as const,
+            label: 'Chưa phân loại',
+            count: searchedProducts.filter((product) => product.category === null)
+              .length,
+          },
+        ]
+      : []),
+  ];
+  const selectedCategoryLabel =
+    categoryChoices.find((category) => category.value === selectedCategory)
+      ?.label ?? 'Tất cả món';
 
   return (
     <section>
@@ -72,6 +115,63 @@ export function ProductCatalog({
           />
         </label>
       </div>
+
+      {categoryMenuOpen && (
+        <div className="fixed inset-0 z-50">
+          <button
+            type="button"
+            aria-label="Đóng danh mục"
+            onClick={onCloseCategoryMenu}
+            className="absolute inset-0 bg-black/45"
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-categories-heading"
+            className="absolute inset-y-0 left-0 flex w-[min(88vw,30rem)] max-w-full flex-col bg-white shadow-2xl animate-[menu-drawer-enter_180ms_ease-out]"
+          >
+            <header className="flex min-h-[76px] items-center justify-between border-b border-[#e8e1d3] px-6">
+              <h2
+                id="product-categories-heading"
+                className="text-xl font-semibold text-[#26352c]"
+              >
+                Thực đơn
+              </h2>
+              <button
+                type="button"
+                onClick={onCloseCategoryMenu}
+                aria-label="Đóng danh mục"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-3xl leading-none text-[#69746b] hover:bg-[#f4f7f2]"
+              >
+                ×
+              </button>
+            </header>
+            <nav aria-label="Danh mục đồ uống" className="overflow-y-auto p-4">
+              <ul className="space-y-1">
+                {categoryChoices.map((category) => {
+                  const isSelected = category.value === selectedCategory;
+                  return (
+                    <li key={category.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelectCategory(category.value);
+                          onCloseCategoryMenu();
+                        }}
+                        aria-current={isSelected ? 'true' : undefined}
+                        className={`flex min-h-[60px] w-full items-center justify-between px-4 text-left text-base transition ${isSelected ? 'bg-[#e6f4ff] font-semibold text-[#2786c8]' : 'rounded-lg text-[#26352c] hover:bg-[#f4f7f2]'}`}
+                      >
+                        <span>{category.label}</span>
+                        <span>({category.count})</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          </aside>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -98,9 +198,11 @@ export function ProductCatalog({
       ) : visibleProducts.length === 0 ? (
         <div className="rounded-2xl border border-[#e8e1d3] bg-white px-6 py-12 text-center">
           <p className="font-medium text-[#46544a]">
-            {products.length === 0
+            {menuProducts.length === 0
               ? 'Thực đơn hiện chưa có món nào.'
-              : 'Không tìm thấy món có tên phù hợp.'}
+              : selectedCategory !== 'ALL' && searchedProducts.length > 0
+                ? `Danh mục ${selectedCategoryLabel} hiện chưa có món phù hợp.`
+                : 'Không tìm thấy món có tên phù hợp.'}
           </p>
         </div>
       ) : (

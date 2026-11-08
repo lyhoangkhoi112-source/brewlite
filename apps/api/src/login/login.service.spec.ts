@@ -139,4 +139,15 @@ describe('LoginService', () => {
     expect(user.loginLockoutStage).toBe(0);
     expect(user.lockedUntil).toBeNull();
   });
+
+  it('reports inactive accounts as nonexistent', async () => {
+    user.status = UserStatus.INACTIVE;
+
+    await expect(
+      service.login({ email: user.email, password: 'correct-password' }),
+    ).rejects.toThrow('Tài khoản không tồn tại');
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(jwt.signAsync).not.toHaveBeenCalled();
+  });
 });

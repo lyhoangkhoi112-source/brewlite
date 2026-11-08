@@ -5,6 +5,7 @@ import {
   PaymentStatus,
   Prisma,
   ProductStatus,
+  UserStatus,
 } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -29,7 +30,10 @@ describe('OrdersService', () => {
       updateMany: ReturnType<typeof vi.fn>;
       findUniqueOrThrow: ReturnType<typeof vi.fn>;
     };
-    payment: { updateMany: ReturnType<typeof vi.fn> };
+    payment: {
+      create: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     loyaltyTransaction: {
       create: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
@@ -58,7 +62,10 @@ describe('OrdersService', () => {
   beforeEach(async () => {
     prisma = {
       user: {
-        findUnique: vi.fn().mockResolvedValue({ id: userId }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: userId,
+          status: UserStatus.ACTIVE,
+        }),
         update: vi.fn().mockResolvedValue({ loyaltyPoints: 5 }),
       },
       product: {
@@ -82,7 +89,10 @@ describe('OrdersService', () => {
           orderItems: [],
         }),
       },
-      payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      payment: {
+        create: vi.fn().mockResolvedValue({ id: 'retry-payment-id' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       loyaltyTransaction: {
         create: vi.fn().mockResolvedValue({}),
         findMany: vi.fn().mockResolvedValue([]),
@@ -289,12 +299,25 @@ describe('OrdersService', () => {
 
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     expect(prisma.order.create.mock.calls[0][0].data).toMatchObject({
       userId,
       guestAccessTokenHash: null,
     });
+  });
+
+  it('rejects authenticated orders for an inactive account', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: userId,
+      status: UserStatus.INACTIVE,
+    });
+
+    await expect(service.createOrderForUser(request, userId)).rejects.toThrow(
+      'Tài khoản không còn hoạt động',
+    );
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('creates a pending payment for a selected mock provider', async () => {
@@ -427,6 +450,68 @@ describe('OrdersService', () => {
       }
     },
   );
+
+  it('creates a new pending payment and reserves stock when retrying a failed order', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.PAYMENT_FAILED,
+      totalAmount: new Prisma.Decimal('50000'),
+      orderItems: [
+        { productId, quantity: 1 },
+        { productId, quantity: 1 },
+      ],
+    });
+
+    await service.retryMockPayment(
+      'order-id',
+      { paymentMethod: 'VNPAY' },
+      userId,
+    );
+
+    expect(prisma.product.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: productId,
+        status: ProductStatus.AVAILABLE,
+        stockQuantity: { gte: 2 },
+      },
+      data: { stockQuantity: { decrement: 2 } },
+    });
+    expect(prisma.payment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orderId: 'order-id',
+        amount: new Prisma.Decimal('50000'),
+        method: PaymentMethod.VNPAY,
+      }),
+    });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'order-id',
+        status: OrderStatus.PAYMENT_FAILED,
+        userId,
+      },
+      data: { status: OrderStatus.PENDING },
+    });
+    expect(prisma.order.findUniqueOrThrow).toHaveBeenCalledOnce();
+  });
+
+  it('does not reopen a failed order when its products are no longer in stock', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.PAYMENT_FAILED,
+      totalAmount: new Prisma.Decimal('50000'),
+      orderItems: [{ productId, quantity: 2 }],
+    });
+    prisma.product.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.retryMockPayment('order-id', {}, userId),
+    ).rejects.toThrow(
+      'Sản phẩm trong đơn hiện không đủ số lượng để thanh toán lại',
+    );
+
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
 
   it('gets loyalty balance and the latest transactions', async () => {
     prisma.user.findUnique.mockResolvedValue({
