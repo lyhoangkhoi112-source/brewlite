@@ -28,7 +28,7 @@ export class ProductsController {
 
   @Post()
   create(@Body() input: CreateProductDto) {
-    return this.products.createProducts([input]);
+    return this.products.create(input);
   }
 
   @Patch(':id')
