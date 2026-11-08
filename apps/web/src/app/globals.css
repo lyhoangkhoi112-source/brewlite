@@ -42,4 +42,11 @@ body {
 .form-input:focus {
   border-color: #739077;
   box-shadow: 0 0 0 4px rgb(115 144 119 / 10%);
+@keyframes menu-drawer-enter {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
