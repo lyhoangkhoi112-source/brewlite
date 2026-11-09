@@ -1,5 +1,7 @@
 'use client';
 
+import { QRCodeSVG } from 'qrcode.react';
+import { useSyncExternalStore } from 'react';
 import type {
   MockPaymentOutcome,
   OrderConfirmation,
@@ -26,7 +28,16 @@ export function MockPaymentDialog({
   const payment =
     order?.payments.find((candidate) => candidate.status === 'PENDING') ??
     order?.payments[0];
+  const origin = useSyncExternalStore(
+    () => () => {},
+    () => window.location.origin,
+    () => '',
+  );
+
   if (!order || !payment) return null;
+  const checkoutUrl = origin
+    ? `${origin}/mock-checkout?paymentId=${encodeURIComponent(payment.id)}&paymentMethod=${encodeURIComponent(method)}`
+    : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
@@ -68,8 +79,24 @@ export function MockPaymentDialog({
           </select>
         </label>
         <p className="mt-3 rounded-xl bg-[#f7f4ed] px-4 py-3 text-sm text-[#69746b]">
-          Chọn kết quả giả lập. Không có giao dịch tiền thật.
+          Quét mã bằng điện thoại để mở trang thanh toán mô phỏng. Không có
+          giao dịch tiền thật.
         </p>
+        <div className="mt-4 flex flex-col items-center rounded-2xl border border-[#e8e4da] bg-white p-4">
+          {checkoutUrl ? (
+            <QRCodeSVG value={checkoutUrl} size={176} level="M" includeMargin />
+          ) : (
+            <div className="h-44 w-44 animate-pulse rounded-xl bg-[#f4f4f0]" />
+          )}
+          <a
+            href={checkoutUrl || undefined}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 text-center text-sm font-medium text-[#405d47] underline underline-offset-4"
+          >
+            Mở trang thanh toán trên thiết bị này
+          </a>
+        </div>
         {error && (
           <p role="alert" className="mt-3 text-sm text-red-700">
             {error}

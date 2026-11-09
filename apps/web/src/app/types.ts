@@ -5,6 +5,7 @@ export const productCategories = [
   { value: 'MATCHA', label: 'Matcha' },
   { value: 'ICE_BLEND', label: 'Ice Blend' },
   { value: 'MACCHIATO', label: 'Macchiato' },
+  { value: 'PASTRIES', label: 'Bánh Âu (Pastries)' },
   { value: 'TOPPING', label: 'Topping' },
 ] as const;
 
@@ -51,6 +52,9 @@ export interface OrderConfirmation {
   id: string;
   orderCode: string;
   status: string;
+  rejectionReason: string | null;
+  subtotal: number;
+  discountAmount: number;
   totalAmount: number;
   payments: Array<{
     id: string;
@@ -103,10 +107,13 @@ export interface OrderHistoryEntry {
   orderCode: string;
   status: string;
   createdAt: string;
+  subtotal: number;
+  discountAmount: number;
   totalAmount: number;
   shippingAddress: string | null;
   contactPhone: string | null;
   note: string | null;
+  rejectionReason: string | null;
   orderItems: OrderHistoryItem[];
 }
 

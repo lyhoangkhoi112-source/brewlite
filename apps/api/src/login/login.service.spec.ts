@@ -150,4 +150,43 @@ describe('LoginService', () => {
     expect(prisma.user.update).not.toHaveBeenCalled();
     expect(jwt.signAsync).not.toHaveBeenCalled();
   });
+
+  it('changes a customer password after verifying the current password', async () => {
+    await expect(
+      service.changePassword('user-id', {
+        currentPassword: 'correct-password',
+        newPassword: 'new-password',
+      }),
+    ).resolves.toEqual({ message: 'Đổi mật khẩu thành công' });
+
+    const updatedUser = prisma.user.update.mock.calls.at(-1)?.[0];
+    expect(updatedUser.where).toEqual({ id: 'user-id' });
+    expect(
+      await bcrypt.compare('new-password', updatedUser.data.passwordHash),
+    ).toBe(true);
+  });
+
+  it('rejects password changes when the current password is incorrect', async () => {
+    await expect(
+      service.changePassword('user-id', {
+        currentPassword: 'wrong-password',
+        newPassword: 'new-password',
+      }),
+    ).rejects.toThrow('Mật khẩu hiện tại không chính xác');
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('does not allow staff accounts to use the customer password-change flow', async () => {
+    user.role = UserRole.STAFF;
+
+    await expect(
+      service.changePassword('user-id', {
+        currentPassword: 'correct-password',
+        newPassword: 'new-password',
+      }),
+    ).rejects.toThrow('Chức năng này chỉ dành cho khách hàng');
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
 });

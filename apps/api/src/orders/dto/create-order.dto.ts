@@ -99,6 +99,11 @@ export class CreateOrderDto {
   note?: string;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  redeemPoints?: number;
+
+  @IsOptional()
   @IsIn(['MOMO', 'VNPAY', 'SHOPEEPAY'])
   paymentMethod?: PaymentMethod;
 

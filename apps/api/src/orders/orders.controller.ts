@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,8 +18,14 @@ import {
 } from './dto/create-order.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
 import { RetryMockPaymentDto } from './dto/retry-mock-payment.dto.js';
+import {
+  CancelStaffOrderDto,
+  RejectStaffOrderDto,
+  UpdateStaffOrderStatusDto,
+} from './dto/staff-order.dto.js';
 import { GuestOrJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard.js';
 import { OrdersService } from './orders.service.js';
+import { StaffOrdersGuard } from './staff-orders.guard.js';
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string };
@@ -52,6 +60,32 @@ export class OrdersController {
     );
   }
 
+  @Get('mock-payments/:paymentId')
+  getMockPayment(@Param('paymentId', new ParseUUIDPipe()) paymentId: string) {
+    return this.ordersService.getMockPaymentDetails(paymentId);
+  }
+
+  @Post('mock-payments/:paymentId')
+  async simulateMockPaymentFromLink(
+    @Param('paymentId', new ParseUUIDPipe()) paymentId: string,
+    @Body() input: MockPaymentDto,
+  ) {
+    const order = await this.ordersService.simulateMockPaymentFromLink(
+      paymentId,
+      input,
+    );
+    return {
+      orderCode: order.orderCode,
+      status: order.status,
+      payments: order.payments.map(({ id, amount, method, status }) => ({
+        id,
+        amount,
+        method,
+        status,
+      })),
+    };
+  }
+
   @Post(':id/payments/retry')
   @UseGuards(GuestOrJwtAuthGuard)
   retryMockPayment(
@@ -76,6 +110,51 @@ export class OrdersController {
   @UseGuards(JwtAuthGuard)
   getMyLoyalty(@Req() request: AuthenticatedRequest) {
     return this.ordersService.getLoyaltyForUser(request.user!.id);
+  }
+
+  @Get('staff')
+  @UseGuards(StaffOrdersGuard)
+  getStaffOrders() {
+    return this.ordersService.getStaffOrders();
+  }
+
+  @Get('staff/search')
+  @UseGuards(StaffOrdersGuard)
+  searchStaffOrder(@Query('orderCode') orderIdentifier?: string) {
+    return this.ordersService.searchStaffOrder(orderIdentifier);
+  }
+
+  @Post(':id/staff-soft-delete')
+  @UseGuards(StaffOrdersGuard)
+  softDeleteStaffOrder(@Param('id', new ParseUUIDPipe()) orderId: string) {
+    return this.ordersService.softDeleteStaffOrder(orderId);
+  }
+
+  @Patch(':id/staff-status')
+  @UseGuards(StaffOrdersGuard)
+  updateStaffOrderStatus(
+    @Param('id', new ParseUUIDPipe()) orderId: string,
+    @Body() input: UpdateStaffOrderStatusDto,
+  ) {
+    return this.ordersService.updateStaffOrderStatus(orderId, input.status);
+  }
+
+  @Post(':id/reject')
+  @UseGuards(StaffOrdersGuard)
+  rejectStaffOrder(
+    @Param('id', new ParseUUIDPipe()) orderId: string,
+    @Body() input: RejectStaffOrderDto,
+  ) {
+    return this.ordersService.rejectStaffOrder(orderId, input.reason);
+  }
+
+  @Post(':id/staff-cancel')
+  @UseGuards(StaffOrdersGuard)
+  cancelStaffOrder(
+    @Param('id', new ParseUUIDPipe()) orderId: string,
+    @Body() input: CancelStaffOrderDto,
+  ) {
+    return this.ordersService.cancelStaffOrder(orderId, input.reason);
   }
 
   @Post('guest/history')

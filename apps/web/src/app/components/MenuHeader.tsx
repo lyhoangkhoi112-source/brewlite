@@ -8,6 +8,7 @@ interface MenuHeaderProps {
   selectedCategoryLabel: string;
   categoryMenuOpen: boolean;
   onOpenOrders: () => void;
+  onChangePassword: () => void;
   onOpenCart: () => void;
   onOpenCategories: () => void;
   onLogout: () => void;
@@ -21,6 +22,7 @@ export function MenuHeader({
   selectedCategoryLabel,
   categoryMenuOpen,
   onOpenOrders,
+  onChangePassword,
   onOpenCart,
   onOpenCategories,
   onLogout,
@@ -67,6 +69,15 @@ export function MenuHeader({
           </button>
           {user ? (
             <>
+              {user.role === 'CUSTOMER' && (
+                <button
+                  type="button"
+                  onClick={onChangePassword}
+                  className="min-h-11 px-2 text-sm font-medium text-[#647268] hover:text-[#304b39]"
+                >
+                  Đổi mật khẩu
+                </button>
+              )}
               <span className="hidden text-sm font-medium text-[#46544a] sm:inline">
                 {user.fullName}
               </span>

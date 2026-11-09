@@ -4,8 +4,11 @@ import type { OrderConfirmation } from '../types';
 
 interface OrderConfirmationDialogProps {
   order: OrderConfirmation | null;
+  cancellingOrder: boolean;
+  error: string | null;
   onClose: () => void;
   onViewOrders: () => void;
+  onCancelOrder: (orderId: string) => void;
 }
 
 function formatToppings(value: string | null): string {
@@ -24,10 +27,24 @@ function formatToppings(value: string | null): string {
   return value;
 }
 
+const orderStatusLabels: Record<string, string> = {
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED: 'Đã xác nhận',
+  PREPARING: 'Đang pha chế',
+  READY: 'Sẵn sàng',
+  DELIVERING: 'Đang giao',
+  COMPLETED: 'Hoàn tất',
+  CANCELLED: 'Đã hủy',
+  PAYMENT_FAILED: 'Thanh toán thất bại',
+};
+
 export function OrderConfirmationDialog({
   order,
+  cancellingOrder,
+  error,
   onClose,
   onViewOrders,
+  onCancelOrder,
 }: OrderConfirmationDialogProps) {
   if (!order) return null;
 
@@ -48,27 +65,33 @@ export function OrderConfirmationDialog({
                 ? 'Đơn hàng đã hủy'
                 : 'Đã tiếp nhận đơn hàng'}
         </p>
-        <h2
-          id="order-confirmation-heading"
-          className="mt-2 text-2xl font-semibold"
-        >
-          Mã đơn {order.orderCode}
+        <h2 id="order-confirmation-heading" className="mt-2 text-2xl font-semibold">
+          Thông tin đơn hàng
         </h2>
         <p className="mt-2 text-sm text-[#69746b]">
-          Trạng thái: {order.status}
+          Trạng thái: {orderStatusLabels[order.status] ?? order.status}
         </p>
+        {order.rejectionReason && (
+          <p className="mt-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+            Lý do hủy / từ chối: {order.rejectionReason}
+          </p>
+        )}
         {order.payments[0] && (
           <p className="mt-2 text-sm text-[#69746b]">
             Thanh toán: {order.payments[0].method} · {order.payments[0].status}
           </p>
         )}
-        {(order.shippingAddress || order.contactPhone) && (
-          <p className="mt-3 rounded-xl bg-[#f7f4ed] px-4 py-3 text-sm text-[#46544a]">
-            Giao đến: {order.shippingAddress ?? '—'}
-            <br />
-            Điện thoại: {order.contactPhone ?? '—'}
+        <div className="mt-3 rounded-xl bg-[#f7f4ed] px-4 py-3 text-sm text-[#46544a]">
+          <p className="break-all font-semibold text-[#304b39]">
+            Mã đơn: {order.orderCode}
           </p>
-        )}
+          {order.shippingAddress && (
+            <p className="mt-1">Giao đến: {order.shippingAddress}</p>
+          )}
+          {order.contactPhone && (
+            <p className="mt-1">Điện thoại: {order.contactPhone}</p>
+          )}
+        </div>
         {order.note && (
           <p className="mt-3 rounded-xl bg-[#f7f4ed] px-4 py-3 text-sm text-[#46544a]">
             Ghi chú: {order.note}
@@ -96,10 +119,44 @@ export function OrderConfirmationDialog({
             );
           })}
         </ul>
-        <div className="mt-3 flex justify-between border-t border-[#edf0eb] pt-4 text-lg font-semibold">
+        <div className="mt-3 space-y-1 border-t border-[#edf0eb] pt-4 text-sm">
+          <div className="flex justify-between">
+            <span>Tạm tính</span>
+            <span>{order.subtotal.toLocaleString('vi-VN')} đ</span>
+          </div>
+          {order.discountAmount > 0 && (
+            <div className="flex justify-between text-[#28764a]">
+              <span>Giảm từ điểm thành viên</span>
+              <span>-{order.discountAmount.toLocaleString('vi-VN')} đ</span>
+            </div>
+          )}
+        </div>
+        <div className="mt-2 flex justify-between border-t border-[#edf0eb] pt-3 text-lg font-semibold">
           <span>Tổng cộng</span>
           <span>{order.totalAmount.toLocaleString('vi-VN')} đ</span>
         </div>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        {(order.status === 'PENDING' || order.status === 'CONFIRMED') && (
+          <div className="mt-5">
+            {order.payments.some((payment) => payment.status === 'SUCCESS') && (
+              <p className="mb-2 text-sm text-red-700">
+                Hủy đơn không tự động hoàn tiền cho giao dịch đã thanh toán.
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={cancellingOrder}
+              onClick={() => onCancelOrder(order.id)}
+              className="min-h-12 w-full rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {cancellingOrder ? 'Đang hủy...' : 'Hủy đơn hàng'}
+            </button>
+          </div>
+        )}
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button
             type="button"

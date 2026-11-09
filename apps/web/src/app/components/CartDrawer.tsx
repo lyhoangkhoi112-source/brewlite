@@ -12,6 +12,7 @@ interface CartDrawerProps {
   note: string;
   isCreatingOrder: boolean;
   deliveryFields: ReactNode;
+  loyaltyRedemption: ReactNode;
   onClose: () => void;
   onNoteChange: (value: string) => void;
   onUpdateOptions: (
@@ -32,6 +33,7 @@ export function CartDrawer({
   note,
   isCreatingOrder,
   deliveryFields,
+  loyaltyRedemption,
   onClose,
   onNoteChange,
   onUpdateOptions,
@@ -202,6 +204,7 @@ export function CartDrawer({
                 <span>Tạm tính</span>
                 <span>{total.toLocaleString('vi-VN')} đ</span>
               </div>
+              {loyaltyRedemption}
               <label className="mt-4 block text-sm font-medium text-[#46544a]">
                 Ghi chú đơn hàng
                 <textarea
