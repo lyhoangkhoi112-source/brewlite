@@ -664,6 +664,10 @@ export default function MenuPage() {
     if (sessionRestoreStarted.current) return;
     const frame = window.requestAnimationFrame(() => {
       sessionRestoreStarted.current = true;
+      const isMenuRoute =
+        new URLSearchParams(window.location.search).get('view') === 'menu';
+      if (isMenuRoute) setScreen('menu');
+
       try {
         const savedSession = window.sessionStorage.getItem(customerSessionKey);
         if (savedSession) {
@@ -675,19 +679,34 @@ export default function MenuPage() {
           setAccessToken(restoredSession.accessToken);
           setUser(restoredSession.user);
           setDeliveryPhone(restoredSession.user.phone ?? '');
-          setScreen('menu');
+          enterMenuRoute();
           void loadMenu(restoredSession.accessToken);
           void loadLoyalty(restoredSession.accessToken, true);
+        } else if (isMenuRoute) {
+          void loadMenu();
         }
       } catch (error) {
         window.sessionStorage.removeItem(customerSessionKey);
         console.error('Không thể khôi phục phiên khách hàng:', error);
+        if (isMenuRoute) void loadMenu();
       } finally {
         setSessionReady(true);
       }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [loadLoyalty, loadMenu]);
+
+  useEffect(() => {
+    function handleHistoryNavigation() {
+      const isMenuRoute =
+        new URLSearchParams(window.location.search).get('view') === 'menu';
+      setScreen(isMenuRoute ? 'menu' : 'welcome');
+      if (isMenuRoute) void loadMenu(accessToken);
+    }
+
+    window.addEventListener('popstate', handleHistoryNavigation);
+    return () => window.removeEventListener('popstate', handleHistoryNavigation);
+  }, [accessToken, loadMenu]);
 
   async function cancelOrder(orderId: string) {
     if (
@@ -867,7 +886,7 @@ export default function MenuPage() {
       setDeliveryPhone(result.user.phone ?? '');
       setPassword('');
       setLoginNotice(null);
-      setScreen('menu');
+      enterMenuRoute();
       await loadMenu(result.accessToken);
       void loadLoyalty(result.accessToken, true);
 
@@ -929,8 +948,30 @@ export default function MenuPage() {
   function openMenu() {
     setPendingOrderAction(null);
     setLoginNotice(null);
-    setScreen('menu');
+    enterMenuRoute();
     void loadMenu(accessToken);
+  }
+
+  function enterMenuRoute() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('view') !== 'menu') {
+      url.searchParams.set('view', 'menu');
+      window.history.pushState(null, '', url);
+    }
+    setScreen('menu');
+  }
+
+  function returnHome() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('view');
+    window.history.replaceState(
+      null,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    setPendingOrderAction(null);
+    setConfigProduct(null);
+    setScreen('welcome');
   }
 
   function returnFromAuth() {
@@ -950,7 +991,7 @@ export default function MenuPage() {
     setChangePasswordOpen(false);
     setConfigProduct(null);
     setPendingOrderAction(null);
-    setScreen('menu');
+    enterMenuRoute();
   }
 
   const deliveryFields = (
@@ -1044,11 +1085,7 @@ export default function MenuPage() {
           setLoginError(null);
           setScreen('login');
         }}
-        onHome={() => {
-          setPendingOrderAction(null);
-          setConfigProduct(null);
-          setScreen('welcome');
-        }}
+        onHome={returnHome}
       />
 
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-8 sm:py-8 lg:py-12">
