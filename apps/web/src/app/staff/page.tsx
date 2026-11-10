@@ -810,8 +810,7 @@ export default function StaffPage() {
                           </button>
                         </>
                       )}
-                      {(order.status === 'PENDING' ||
-                        order.status === 'CONFIRMED') &&
+                      {order.status === 'CONFIRMED' &&
                         rejectingOrderId !== order.id && (
                           <button
                             type="button"
