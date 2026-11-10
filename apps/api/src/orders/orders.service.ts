@@ -477,6 +477,11 @@ export class OrdersService {
           id: true,
           status: true,
           totalAmount: true,
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { status: true, failureReason: true },
+          },
           orderItems: {
             select: { productId: true, quantity: true },
           },
@@ -485,9 +490,16 @@ export class OrdersService {
       if (!order) {
         throw new NotFoundException('Không tìm thấy đơn hàng');
       }
-      if (order.status !== OrderStatus.PAYMENT_FAILED) {
+      const isRetryableCancelledPayment =
+        order.status === OrderStatus.CANCELLED &&
+        order.payments[0]?.status === PaymentStatus.CANCELLED &&
+        order.payments[0].failureReason === 'Mock payment cancelled';
+      if (
+        order.status !== OrderStatus.PAYMENT_FAILED &&
+        !isRetryableCancelledPayment
+      ) {
         throw new ConflictException(
-          'Chỉ có thể thanh toán lại đơn hàng thất bại',
+          'Chỉ có thể thanh toán lại đơn hàng thất bại hoặc giao dịch đã hủy',
         );
       }
 
@@ -527,7 +539,7 @@ export class OrdersService {
       const reopened = await transaction.order.updateMany({
         where: {
           id: orderId,
-          status: OrderStatus.PAYMENT_FAILED,
+          status: order.status,
           ...access,
         },
         data: { status: OrderStatus.PENDING },
@@ -581,11 +593,15 @@ export class OrdersService {
   }
 
   async getOrdersForUser(userId: string) {
-    return this.prisma.order.findMany({
+    const orders = await this.prisma.order.findMany({
       where: { userId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
-      select: this.orderHistorySelect(),
+      select: this.orderHistoryWithPaymentRetrySelect(),
     });
+    return orders.map(({ payments, ...order }) => ({
+      ...order,
+      canRetryPayment: this.hasCancelledMockPayment(order.status, payments),
+    }));
   }
 
   async getStaffOrders() {
@@ -851,7 +867,7 @@ export class OrdersService {
   async getGuestOrders(accessTokens: string[]) {
     if (accessTokens.length === 0) return [];
 
-    return this.prisma.order.findMany({
+    const orders = await this.prisma.order.findMany({
       where: {
         userId: null,
         deletedAt: null,
@@ -860,8 +876,12 @@ export class OrdersService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      select: this.orderHistorySelect(),
+      select: this.orderHistoryWithPaymentRetrySelect(),
     });
+    return orders.map(({ payments, ...order }) => ({
+      ...order,
+      canRetryPayment: this.hasCancelledMockPayment(order.status, payments),
+    }));
   }
 
   async cancelOrder(
@@ -1067,5 +1087,27 @@ export class OrdersService {
         include: { product: { select: { category: true } } },
       },
     } satisfies Prisma.OrderSelect;
+  }
+
+  private orderHistoryWithPaymentRetrySelect() {
+    return {
+      ...this.orderHistorySelect(),
+      payments: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { status: true, failureReason: true },
+      },
+    } satisfies Prisma.OrderSelect;
+  }
+
+  private hasCancelledMockPayment(
+    orderStatus: OrderStatus,
+    payments: Array<{ status: PaymentStatus; failureReason: string | null }>,
+  ) {
+    return (
+      orderStatus === OrderStatus.CANCELLED &&
+      payments[0]?.status === PaymentStatus.CANCELLED &&
+      payments[0].failureReason === 'Mock payment cancelled'
+    );
   }
 }

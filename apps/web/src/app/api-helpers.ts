@@ -259,6 +259,7 @@ export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
       typeof value.id !== 'string' ||
       typeof value.orderCode !== 'string' ||
       typeof value.status !== 'string' ||
+      typeof value.canRetryPayment !== 'boolean' ||
       typeof value.createdAt !== 'string' ||
       !Array.isArray(value.orderItems)
     ) {
@@ -314,6 +315,7 @@ export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
       id: value.id,
       orderCode: value.orderCode,
       status: value.status,
+      canRetryPayment: value.canRetryPayment,
       createdAt: value.createdAt,
       subtotal,
       discountAmount,

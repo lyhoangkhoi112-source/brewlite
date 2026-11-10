@@ -2,11 +2,7 @@
 
 import { QRCodeSVG } from 'qrcode.react';
 import { useSyncExternalStore } from 'react';
-import type {
-  MockPaymentOutcome,
-  OrderConfirmation,
-  PaymentMethod,
-} from '../types';
+import type { OrderConfirmation, PaymentMethod } from '../types';
 
 interface MockPaymentDialogProps {
   order: OrderConfirmation | null;
@@ -14,7 +10,7 @@ interface MockPaymentDialogProps {
   isProcessing: boolean;
   error: string | null;
   onMethodChange: (method: PaymentMethod) => void;
-  onSimulate: (outcome: MockPaymentOutcome) => void;
+  onCancelPayment: () => void;
 }
 
 export function MockPaymentDialog({
@@ -23,7 +19,7 @@ export function MockPaymentDialog({
   isProcessing,
   error,
   onMethodChange,
-  onSimulate,
+  onCancelPayment,
 }: MockPaymentDialogProps) {
   const payment =
     order?.payments.find((candidate) => candidate.status === 'PENDING') ??
@@ -45,7 +41,7 @@ export function MockPaymentDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mock-payment-heading"
-        className="w-full max-w-md rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-8"
+        className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl sm:p-8"
       >
         <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#59775e]">
           Môi trường thanh toán mô phỏng
@@ -102,32 +98,14 @@ export function MockPaymentDialog({
             {error}
           </p>
         )}
-        <div className="mt-5 grid gap-3">
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => onSimulate('SUCCESS')}
-            className="min-h-12 rounded-xl bg-[#304b39] px-4 py-3 font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isProcessing ? 'Đang xử lý...' : 'Thanh toán thành công'}
-          </button>
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => onSimulate('FAILED')}
-            className="min-h-12 rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Mô phỏng thất bại
-          </button>
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => onSimulate('CANCELLED')}
-            className="min-h-12 rounded-xl px-4 py-3 font-semibold text-[#69746b] transition hover:bg-[#f7f4ed] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Hủy thanh toán
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={isProcessing}
+          onClick={onCancelPayment}
+          className="mt-4 min-h-12 w-full rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-wait disabled:opacity-60"
+        >
+          {isProcessing ? 'Đang hủy thanh toán...' : 'Hủy thanh toán'}
+        </button>
       </section>
     </div>
   );

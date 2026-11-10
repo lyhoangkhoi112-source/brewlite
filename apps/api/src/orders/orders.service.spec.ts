@@ -647,6 +647,81 @@ describe('OrdersService', () => {
     expect(prisma.order.findUniqueOrThrow).toHaveBeenCalledOnce();
   });
 
+  it('creates a new pending payment when retrying a cancelled mock payment', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.CANCELLED,
+      totalAmount: new Prisma.Decimal('50000'),
+      payments: [
+        {
+          status: PaymentStatus.CANCELLED,
+          failureReason: 'Mock payment cancelled',
+        },
+      ],
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await service.retryMockPayment('order-id', {}, userId);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'order-id',
+        status: OrderStatus.CANCELLED,
+        userId,
+      },
+      data: { status: OrderStatus.PENDING },
+    });
+    expect(prisma.payment.create).toHaveBeenCalledOnce();
+  });
+
+  it('does not retry an order cancelled for another reason', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.CANCELLED,
+      totalAmount: new Prisma.Decimal('50000'),
+      payments: [
+        {
+          status: PaymentStatus.CANCELLED,
+          failureReason: 'Đơn hàng đã được khách hàng hủy',
+        },
+      ],
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await expect(
+      service.retryMockPayment('order-id', {}, userId),
+    ).rejects.toThrow(
+      'Chỉ có thể thanh toán lại đơn hàng thất bại hoặc giao dịch đã hủy',
+    );
+
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('does not retry after a cancelled order has a newer successful payment', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.CANCELLED,
+      totalAmount: new Prisma.Decimal('50000'),
+      payments: [
+        {
+          status: PaymentStatus.SUCCESS,
+          failureReason: null,
+        },
+      ],
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await expect(
+      service.retryMockPayment('order-id', {}, userId),
+    ).rejects.toThrow(
+      'Chỉ có thể thanh toán lại đơn hàng thất bại hoặc giao dịch đã hủy',
+    );
+
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
   it('does not reopen a failed order when its products are no longer in stock', async () => {
     prisma.order.findFirst.mockResolvedValue({
       id: 'order-id',
@@ -718,6 +793,51 @@ describe('OrdersService', () => {
 
     expect(prisma.order.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId, deletedAt: null } }),
+    );
+  });
+
+  it('only marks an order retryable when its latest cancelled payment was user-cancelled', async () => {
+    prisma.order.findMany.mockResolvedValue([
+      {
+        id: 'order-id',
+        status: OrderStatus.CANCELLED,
+        payments: [
+          { status: PaymentStatus.SUCCESS, failureReason: null },
+        ],
+      },
+      {
+        id: 'another-order-id',
+        status: OrderStatus.CANCELLED,
+        payments: [
+          {
+            status: PaymentStatus.CANCELLED,
+            failureReason: 'Mock payment cancelled',
+          },
+        ],
+      },
+    ]);
+
+    await expect(service.getOrdersForUser(userId)).resolves.toEqual([
+      expect.objectContaining({
+        id: 'order-id',
+        canRetryPayment: false,
+      }),
+      expect.objectContaining({
+        id: 'another-order-id',
+        canRetryPayment: true,
+      }),
+    ]);
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { status: true, failureReason: true },
+          },
+        }),
+      }),
     );
   });
 

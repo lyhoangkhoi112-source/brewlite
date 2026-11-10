@@ -30,7 +30,6 @@ import {
 import type {
   AuthenticatedUser,
   LoyaltySummary,
-  MockPaymentOutcome,
   OrderConfirmation,
   OrderHistoryEntry,
   OrderItemInput,
@@ -97,7 +96,7 @@ export default function MenuPage() {
     order: OrderConfirmation;
     guestAccessToken: string | null;
   } | null>(null);
-  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
+  const [isCancellingPayment, setIsCancellingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -315,7 +314,6 @@ export default function MenuPage() {
     setDeliveryValidationAttempted(false);
     setOrderConfirmation(null);
     setPendingPaymentOrder(null);
-    setPaymentError(null);
 
     try {
       const response = await fetch(`${apiUrl}/orders`, {
@@ -425,14 +423,14 @@ export default function MenuPage() {
     }
   }
 
-  async function simulateMockPayment(outcome: MockPaymentOutcome) {
+  async function cancelPendingPayment() {
     const pending = pendingPaymentOrder;
     const payment = pending?.order.payments.find(
       (candidate) => candidate.status === 'PENDING',
     );
-    if (!pending || !payment) return;
+    if (!pending || !payment || isCancellingPayment) return;
 
-    setIsSimulatingPayment(true);
+    setIsCancellingPayment(true);
     setPaymentError(null);
     try {
       const response = await fetch(
@@ -444,7 +442,7 @@ export default function MenuPage() {
             ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
           body: JSON.stringify({
-            outcome,
+            outcome: 'CANCELLED',
             paymentMethod,
             ...(pending.guestAccessToken
               ? { guestAccessToken: pending.guestAccessToken }
@@ -455,44 +453,41 @@ export default function MenuPage() {
       const payload: unknown = await response.json();
       if (!response.ok) {
         throw new Error(
-          readErrorMessage(payload, 'Không thể xử lý giao dịch mô phỏng.'),
+          readErrorMessage(payload, 'Không thể hủy thanh toán.'),
         );
       }
 
-      const updatedOrder = parseOrderConfirmation(payload);
-      if (updatedOrder.status !== 'CONFIRMED') {
-        const restoredQuantities = new Map<string, number>();
-        for (const item of updatedOrder.orderItems) {
-          restoredQuantities.set(
-            item.productId,
-            (restoredQuantities.get(item.productId) ?? 0) + item.quantity,
-          );
-        }
-        setProducts((current) =>
-          current.map((product) => {
-            const restored = restoredQuantities.get(product.id);
-            if (restored === undefined) return product;
-            const stockQuantity = product.stockQuantity + restored;
-            return {
-              ...product,
-              stockQuantity,
-              status: stockQuantity > 0 ? 'AVAILABLE' : product.status,
-            };
-          }),
+      const cancelledOrder = parseOrderConfirmation(payload);
+      const restoredQuantities = new Map<string, number>();
+      for (const item of cancelledOrder.orderItems) {
+        restoredQuantities.set(
+          item.productId,
+          (restoredQuantities.get(item.productId) ?? 0) + item.quantity,
         );
       }
+      setProducts((current) =>
+        current.map((product) => {
+          const restored = restoredQuantities.get(product.id);
+          if (restored === undefined) return product;
+          const stockQuantity = product.stockQuantity + restored;
+          return {
+            ...product,
+            stockQuantity,
+            status: stockQuantity > 0 ? 'AVAILABLE' : product.status,
+          };
+        }),
+      );
 
       setPendingPaymentOrder(null);
       setOrderConfirmation({
-        ...updatedOrder,
-        orderItems: updatedOrder.orderItems.map((item) => ({
+        ...cancelledOrder,
+        orderItems: cancelledOrder.orderItems.map((item) => ({
           ...item,
           isStandaloneTopping:
             products.find((product) => product.id === item.productId)
               ?.category === 'TOPPING',
         })),
       });
-      if (outcome === 'SUCCESS' && user) void loadLoyalty();
     } catch (error) {
       setPaymentError(
         error instanceof Error
@@ -500,7 +495,7 @@ export default function MenuPage() {
           : 'Không thể kết nối đến máy chủ.',
       );
     } finally {
-      setIsSimulatingPayment(false);
+      setIsCancellingPayment(false);
     }
   }
 
@@ -697,7 +692,7 @@ export default function MenuPage() {
   async function cancelOrder(orderId: string) {
     if (
       !window.confirm(
-        'Bạn có chắc muốn hủy đơn hàng này? Hệ thống không tự động hoàn tiền cho giao dịch đã thanh toán.',
+        'Bạn có chắc chắn muốn hủy đơn hàng này? Hành động này không thể hoàn tác.',
       )
     ) {
       return;
@@ -1155,10 +1150,10 @@ export default function MenuPage() {
       <MockPaymentDialog
         order={pendingPaymentOrder?.order ?? null}
         method={paymentMethod}
-        isProcessing={isSimulatingPayment}
+        isProcessing={isCancellingPayment}
         error={paymentError}
         onMethodChange={setPaymentMethod}
-        onSimulate={(outcome) => void simulateMockPayment(outcome)}
+        onCancelPayment={() => void cancelPendingPayment()}
       />
 
       <OrderHistoryDialog

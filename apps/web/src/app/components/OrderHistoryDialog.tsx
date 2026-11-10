@@ -249,7 +249,8 @@ export function OrderHistoryDialog({
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {order.status === 'PAYMENT_FAILED' && (
+                    {(order.status === 'PAYMENT_FAILED' ||
+                      order.canRetryPayment) && (
                       <button
                         type="button"
                         disabled={

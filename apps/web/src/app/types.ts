@@ -106,6 +106,7 @@ export interface OrderHistoryEntry {
   id: string;
   orderCode: string;
   status: string;
+  canRetryPayment: boolean;
   createdAt: string;
   subtotal: number;
   discountAmount: number;

@@ -191,19 +191,21 @@ export function MockCheckoutPage({
         ) : payment ? (
           <>
             <dl className="mt-6 space-y-3 rounded-2xl bg-[#f7f4ed] p-4 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-[#69746b]">Mã đơn</dt>
-                <dd className="font-semibold">{payment.orderCode}</dd>
+              <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-4">
+                <dt className="whitespace-nowrap text-[#69746b]">Mã đơn</dt>
+                <dd className="min-w-0 break-all text-right font-semibold">
+                  {payment.orderCode}
+                </dd>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-[#69746b]">Số tiền</dt>
-                <dd className="font-semibold">
+              <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-4">
+                <dt className="whitespace-nowrap text-[#69746b]">Số tiền</dt>
+                <dd className="text-right font-semibold">
                   {payment.amount.toLocaleString('vi-VN')} đ
                 </dd>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-[#69746b]">Phương thức</dt>
-                <dd className="font-semibold">{payment.method} (Mock)</dd>
+              <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-4">
+                <dt className="whitespace-nowrap text-[#69746b]">Phương thức</dt>
+                <dd className="text-right font-semibold">{payment.method} (Mock)</dd>
               </div>
             </dl>
             {isPending ? (
@@ -231,7 +233,7 @@ export function MockCheckoutPage({
                     onClick={() => void handleOutcome('CANCELLED')}
                     className="min-h-12 rounded-xl border border-[#dce2da] px-4 py-3 font-semibold text-[#405d47] transition hover:bg-[#f4f7f2] disabled:cursor-wait disabled:opacity-60"
                   >
-                    Hủy bỏ
+                    Hủy thanh toán
                   </button>
                 </div>
               </>
