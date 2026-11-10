@@ -839,9 +839,6 @@ export default function StaffPage() {
                             placeholder="Có thể để trống"
                             style={{ ...inputStyle, minHeight: 84, resize: 'vertical' }}
                           />
-                          <p style={{ color: '#777', fontSize: 12, margin: 0 }}>
-                            Hủy đơn không tự động hoàn tiền cho giao dịch đã thanh toán.
-                          </p>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button
                               type="submit"
