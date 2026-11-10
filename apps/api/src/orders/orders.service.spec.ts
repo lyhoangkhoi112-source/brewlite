@@ -434,7 +434,9 @@ describe('OrdersService', () => {
 
   it('does not create mock payments in production', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
+    const originalMockPaymentsEnabled = process.env.MOCK_PAYMENTS_ENABLED;
     process.env.NODE_ENV = 'production';
+    delete process.env.MOCK_PAYMENTS_ENABLED;
 
     try {
       await expect(
@@ -451,6 +453,45 @@ describe('OrdersService', () => {
         delete process.env.NODE_ENV;
       } else {
         process.env.NODE_ENV = originalNodeEnv;
+      }
+      if (originalMockPaymentsEnabled === undefined) {
+        delete process.env.MOCK_PAYMENTS_ENABLED;
+      } else {
+        process.env.MOCK_PAYMENTS_ENABLED = originalMockPaymentsEnabled;
+      }
+    }
+  });
+
+  it('creates mock payments in production when explicitly enabled', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalMockPaymentsEnabled = process.env.MOCK_PAYMENTS_ENABLED;
+    process.env.NODE_ENV = 'production';
+    process.env.MOCK_PAYMENTS_ENABLED = 'true';
+
+    try {
+      await service.createOrderForUser(
+        Object.assign(new CreateOrderDto(), request, {
+          paymentMethod: 'MOMO',
+        }),
+        userId,
+      );
+
+      expect(
+        prisma.order.create.mock.calls[0][0].data.payments.create,
+      ).toMatchObject({
+        amount: new Prisma.Decimal('50000'),
+        method: PaymentMethod.MOMO,
+      });
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+      if (originalMockPaymentsEnabled === undefined) {
+        delete process.env.MOCK_PAYMENTS_ENABLED;
+      } else {
+        process.env.MOCK_PAYMENTS_ENABLED = originalMockPaymentsEnabled;
       }
     }
   });

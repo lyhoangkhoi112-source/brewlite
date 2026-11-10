@@ -30,6 +30,13 @@ type OrderRequestItem = Pick<
   | 'selectedToppings'
 >;
 
+function areMockPaymentsEnabled(): boolean {
+  return (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.MOCK_PAYMENTS_ENABLED === 'true'
+  );
+}
+
 function getRequestItems(input: CreateOrderDto): OrderRequestItem[] {
   if (
     input.items !== undefined && //Nếu có item (nghĩa là khác undefined) thì hàm sẽ trả về items.
@@ -68,7 +75,7 @@ export class OrdersService {
     if (!authenticatedUserId && redeemPoints > 0) {
       throw new ForbiddenException('Đăng nhập để sử dụng điểm khách hàng');
     }
-    if (input.paymentMethod && process.env.NODE_ENV === 'production') {
+    if (input.paymentMethod && !areMockPaymentsEnabled()) {
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 
@@ -225,7 +232,7 @@ export class OrdersService {
           orderItems: {
             create: orderItems,
           },
-          ...(process.env.NODE_ENV !== 'production'
+          ...(areMockPaymentsEnabled()
             ? {
                 payments: {
                   create: {
@@ -264,7 +271,7 @@ export class OrdersService {
     userId: string | undefined,
     paymentIdAccess = false,
   ) {
-    if (process.env.NODE_ENV === 'production') {
+    if (!areMockPaymentsEnabled()) {
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 
@@ -392,7 +399,7 @@ export class OrdersService {
   }
 
   async getMockPaymentDetails(paymentId: string) {
-    if (process.env.NODE_ENV === 'production') {
+    if (!areMockPaymentsEnabled()) {
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 
@@ -429,7 +436,7 @@ export class OrdersService {
     paymentId: string,
     input: MockPaymentDto,
   ) {
-    if (process.env.NODE_ENV === 'production') {
+    if (!areMockPaymentsEnabled()) {
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 
@@ -455,7 +462,7 @@ export class OrdersService {
     input: RetryMockPaymentDto,
     userId: string | undefined,
   ) {
-    if (process.env.NODE_ENV === 'production') {
+    if (!areMockPaymentsEnabled()) {
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 

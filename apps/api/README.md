@@ -116,8 +116,17 @@ an outcome (`SUCCESS`, `FAILED`, or `CANCELLED`) to
 `POST /orders/:orderId/payments/:paymentId/mock`. Guest orders must include
 their `guestAccessToken`; authenticated orders use the bearer token. A
 successful outcome confirms the order; failure or cancellation restores the
-reserved stock. Mock payment is disabled in production and does not connect to
-a real provider or move money.
+reserved stock. Mock payments can be enabled in production by setting
+`MOCK_PAYMENTS_ENABLED=true` on the API service. They only update simulated
+payment records and do not connect to a real provider or move money.
+
+For a Vercel frontend and Render API deployment, set `NEXT_PUBLIC_API_URL` in
+Vercel to the public Render API URL (for example,
+`https://your-api.onrender.com`) and set `MOCK_PAYMENTS_ENABLED=true` in the
+Render API environment. Redeploy both services after changing environment
+variables. The frontend builds QR links from its current public origin, while
+the checkout page uses `NEXT_PUBLIC_API_URL` to load and process the mock
+payment.
 
 After a successful payment, registered customers earn one loyalty point for
 each 10,000 VND in the paid order total, rounded down per order. Guest orders do
