@@ -5,11 +5,13 @@ export const productCategories = [
   { value: 'MATCHA', label: 'Matcha' },
   { value: 'ICE_BLEND', label: 'Ice Blend' },
   { value: 'MACCHIATO', label: 'Macchiato' },
+  { value: 'PASTRIES', label: 'Bánh Âu (Pastries)' },
   { value: 'TOPPING', label: 'Topping' },
 ] as const;
 
 export type Screen = 'welcome' | 'login' | 'register' | 'menu';
 export type ProductCategory = (typeof productCategories)[number]['value'];
+export type ProductMenuCategory = ProductCategory | 'ALL' | 'UNCATEGORIZED';
 export type OrderIntent = 'buyNow' | 'cart';
 export type PaymentMethod = 'MOMO' | 'VNPAY' | 'SHOPEEPAY';
 export type MockPaymentOutcome = 'SUCCESS' | 'FAILED' | 'CANCELLED';
@@ -50,6 +52,9 @@ export interface OrderConfirmation {
   id: string;
   orderCode: string;
   status: string;
+  rejectionReason: string | null;
+  subtotal: number;
+  discountAmount: number;
   totalAmount: number;
   payments: Array<{
     id: string;
@@ -101,11 +106,15 @@ export interface OrderHistoryEntry {
   id: string;
   orderCode: string;
   status: string;
+  canRetryPayment: boolean;
   createdAt: string;
+  subtotal: number;
+  discountAmount: number;
   totalAmount: number;
   shippingAddress: string | null;
   contactPhone: string | null;
   note: string | null;
+  rejectionReason: string | null;
   orderItems: OrderHistoryItem[];
 }
 

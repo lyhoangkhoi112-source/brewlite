@@ -115,7 +115,13 @@ export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
   }
 
   const totalAmount = Number(payload.totalAmount);
-  if (!Number.isFinite(totalAmount)) {
+  const subtotal = Number(payload.subtotal ?? totalAmount);
+  const discountAmount = Number(payload.discountAmount ?? 0);
+  if (
+    !Number.isFinite(totalAmount) ||
+    !Number.isFinite(subtotal) ||
+    !Number.isFinite(discountAmount)
+  ) {
     throw new Error('Tổng tiền đơn hàng từ máy chủ không hợp lệ.');
   }
 
@@ -185,6 +191,12 @@ export function parseOrderConfirmation(payload: unknown): OrderConfirmation {
     id: payload.id,
     orderCode: payload.orderCode,
     status: payload.status,
+    rejectionReason:
+      typeof payload.rejectionReason === 'string'
+        ? payload.rejectionReason
+        : null,
+    subtotal,
+    discountAmount,
     totalAmount,
     payments,
     note: typeof payload.note === 'string' ? payload.note : null,
@@ -247,6 +259,7 @@ export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
       typeof value.id !== 'string' ||
       typeof value.orderCode !== 'string' ||
       typeof value.status !== 'string' ||
+      typeof value.canRetryPayment !== 'boolean' ||
       typeof value.createdAt !== 'string' ||
       !Array.isArray(value.orderItems)
     ) {
@@ -254,7 +267,13 @@ export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
     }
 
     const totalAmount = Number(value.totalAmount);
-    if (!Number.isFinite(totalAmount)) {
+    const subtotal = Number(value.subtotal ?? totalAmount);
+    const discountAmount = Number(value.discountAmount ?? 0);
+    if (
+      !Number.isFinite(totalAmount) ||
+      !Number.isFinite(subtotal) ||
+      !Number.isFinite(discountAmount)
+    ) {
       throw new Error('Tổng tiền đơn hàng từ máy chủ không hợp lệ.');
     }
 
@@ -296,7 +315,10 @@ export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
       id: value.id,
       orderCode: value.orderCode,
       status: value.status,
+      canRetryPayment: value.canRetryPayment,
       createdAt: value.createdAt,
+      subtotal,
+      discountAmount,
       totalAmount,
       shippingAddress:
         typeof value.shippingAddress === 'string'
@@ -305,6 +327,10 @@ export function parseOrderHistory(payload: unknown): OrderHistoryEntry[] {
       contactPhone:
         typeof value.contactPhone === 'string' ? value.contactPhone : null,
       note: typeof value.note === 'string' ? value.note : null,
+      rejectionReason:
+        typeof value.rejectionReason === 'string'
+          ? value.rejectionReason
+          : null,
       orderItems,
     };
   });

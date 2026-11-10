@@ -36,6 +36,7 @@ enum ProductCategory {
   MATCHA
   ICE_BLEND
   MACCHIATO
+  PASTRIES
   TOPPING
 }
 
@@ -155,6 +156,8 @@ model Order {
   shippingAddress String?
   contactPhone    String?
   note            String?
+  rejectionReason String?     @db.VarChar(500)
+  deletedAt       DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
@@ -213,11 +216,13 @@ model LoyaltyTransaction {
   id           String                 @id @default(uuid())
   userId       String
   user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orderId      String?                @unique
+  orderId      String?
   order        Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
   type         LoyaltyTransactionType
   points       Int
   balanceAfter Int
   description  String?
   createdAt    DateTime               @default(now())
+
+  @@index([orderId])
 }

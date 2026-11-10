@@ -13,6 +13,7 @@ interface ProductOptionsDialogProps {
   note: string;
   isCreatingOrder: boolean;
   deliveryFields: ReactNode;
+  loyaltyRedemption: ReactNode;
   onClose: () => void;
   onSizeChange: (value: string) => void;
   onQuantityChange: (value: number) => void;
@@ -32,6 +33,7 @@ export function ProductOptionsDialog({
   note,
   isCreatingOrder,
   deliveryFields,
+  loyaltyRedemption,
   onClose,
   onSizeChange,
   onQuantityChange,
@@ -144,6 +146,7 @@ export function ProductOptionsDialog({
         {intent === 'buyNow' && (
           <>
             <div className="mt-5">{deliveryFields}</div>
+            {loyaltyRedemption}
             <label className="mt-5 block text-sm font-medium text-[#46544a]">
               Ghi chú đơn hàng
               <textarea

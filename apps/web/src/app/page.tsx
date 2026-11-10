@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useCartStore } from '../stores/useCartStore';
 import { AuthScreens } from './components/AuthScreens';
+import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { CartDrawer } from './components/CartDrawer';
 import { DeliveryFields } from './components/DeliveryFields';
 import { GuestCheckoutDialog } from './components/GuestCheckoutDialog';
 import { MenuHeader } from './components/MenuHeader';
+import { LoyaltyRedemptionField } from './components/LoyaltyRedemptionField';
 import { MockPaymentDialog } from './components/MockPaymentDialog';
 import { OrderConfirmationDialog } from './components/OrderConfirmationDialog';
 import { OrderHistoryDialog } from './components/OrderHistoryDialog';
@@ -28,7 +30,6 @@ import {
 import type {
   AuthenticatedUser,
   LoyaltySummary,
-  MockPaymentOutcome,
   OrderConfirmation,
   OrderHistoryEntry,
   OrderItemInput,
@@ -36,17 +37,25 @@ import type {
   PaymentMethod,
   PendingOrderAction,
   Product,
+  ProductMenuCategory,
   Screen,
 } from './types';
+import { productCategories } from './types';
 
 const guestCheckoutPreferenceKey = 'brewlite-guest-checkout';
+const customerSessionKey = 'brewlite-customer-session';
 
 export default function MenuPage() {
   const [screen, setScreen] = useState<Screen>('welcome');
+  const [sessionReady, setSessionReady] = useState(false);
+  const sessionRestoreStarted = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [searchName, setSearchName] = useState('');
+  const [selectedMenuCategory, setSelectedMenuCategory] =
+    useState<ProductMenuCategory>('ALL');
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -87,18 +96,23 @@ export default function MenuPage() {
     order: OrderConfirmation;
     guestAccessToken: string | null;
   } | null>(null);
-  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
+  const [isCancellingPayment, setIsCancellingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [myOrders, setMyOrders] = useState<OrderHistoryEntry[]>([]);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loyalty, setLoyalty] = useState<LoyaltySummary | null>(null);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [loadingLoyalty, setLoadingLoyalty] = useState(false);
+  const [redeemPoints, setRedeemPoints] = useState(0);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(
     null,
   );
+  const [retryingPaymentOrderId, setRetryingPaymentOrderId] = useState<
+    string | null
+  >(null);
 
   const addItem = useCartStore((state) => state.addItem);
   const updateCartOptions = useCartStore((state) => state.updateOptions);
@@ -112,7 +126,7 @@ export default function MenuPage() {
     0,
   );
 
-  async function loadMenu(token?: string | null) {
+  const loadMenu = useCallback(async (token?: string | null) => {
     setLoadingMenu(true);
     setMenuError(null);
 
@@ -137,7 +151,7 @@ export default function MenuPage() {
     } finally {
       setLoadingMenu(false);
     }
-  }
+  }, []);
 
   function showProductOptions(product: Product, intent: OrderIntent) {
     setConfigProduct(product);
@@ -172,7 +186,22 @@ export default function MenuPage() {
       return;
     }
 
+    void loadLoyalty();
     handleProductAction(product, intent);
+  }
+
+  function openCart() {
+    setCartOpen(true);
+    if (user) void loadLoyalty();
+  }
+
+  function getRedeemablePoints(subtotal: number) {
+    if (!user || !loyalty) return 0;
+    return Math.min(
+      redeemPoints,
+      loyalty.balance,
+      Math.floor((subtotal * 0.2) / 3_000),
+    );
   }
 
   function continueAsGuest() {
@@ -253,6 +282,7 @@ export default function MenuPage() {
       ],
       false,
       directOrderNote,
+      getRedeemablePoints(configProduct.price * configuredQuantity),
     );
   }
 
@@ -268,6 +298,7 @@ export default function MenuPage() {
     items: OrderItemInput[],
     clearCartAfterSuccess = false,
     note = '',
+    pointsToRedeem = 0,
   ) {
     setDeliveryValidationAttempted(true);
     if (
@@ -283,7 +314,6 @@ export default function MenuPage() {
     setDeliveryValidationAttempted(false);
     setOrderConfirmation(null);
     setPendingPaymentOrder(null);
-    setPaymentError(null);
 
     try {
       const response = await fetch(`${apiUrl}/orders`, {
@@ -297,12 +327,22 @@ export default function MenuPage() {
           contactPhone: deliveryPhone.trim(),
           items,
           note: note.trim() || undefined,
+          ...(user && pointsToRedeem > 0
+            ? { redeemPoints: pointsToRedeem }
+            : {}),
         }),
       });
       const payload: unknown = await response.json();
 
       if (!response.ok) {
         throw new Error(readErrorMessage(payload, 'Không thể tạo đơn hàng.'));
+      }
+
+      const confirmation = parseOrderConfirmation(payload);
+      setOrderConfirmation(confirmation);
+      if (user && pointsToRedeem > 0) {
+        setRedeemPoints(0);
+        void loadLoyalty();
       }
 
       let guestAccessToken: string | null = null;
@@ -324,7 +364,6 @@ export default function MenuPage() {
         );
       }
 
-      const confirmation = parseOrderConfirmation(payload);
       const orderedQuantities = new Map<string, number>();
       for (const item of items) {
         orderedQuantities.set(
@@ -384,12 +423,14 @@ export default function MenuPage() {
     }
   }
 
-  async function simulateMockPayment(outcome: MockPaymentOutcome) {
+  async function cancelPendingPayment() {
     const pending = pendingPaymentOrder;
-    const payment = pending?.order.payments[0];
-    if (!pending || !payment) return;
+    const payment = pending?.order.payments.find(
+      (candidate) => candidate.status === 'PENDING',
+    );
+    if (!pending || !payment || isCancellingPayment) return;
 
-    setIsSimulatingPayment(true);
+    setIsCancellingPayment(true);
     setPaymentError(null);
     try {
       const response = await fetch(
@@ -401,7 +442,7 @@ export default function MenuPage() {
             ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
           body: JSON.stringify({
-            outcome,
+            outcome: 'CANCELLED',
             paymentMethod,
             ...(pending.guestAccessToken
               ? { guestAccessToken: pending.guestAccessToken }
@@ -412,44 +453,41 @@ export default function MenuPage() {
       const payload: unknown = await response.json();
       if (!response.ok) {
         throw new Error(
-          readErrorMessage(payload, 'Không thể xử lý giao dịch mô phỏng.'),
+          readErrorMessage(payload, 'Không thể hủy thanh toán.'),
         );
       }
 
-      const updatedOrder = parseOrderConfirmation(payload);
-      if (updatedOrder.status !== 'CONFIRMED') {
-        const restoredQuantities = new Map<string, number>();
-        for (const item of updatedOrder.orderItems) {
-          restoredQuantities.set(
-            item.productId,
-            (restoredQuantities.get(item.productId) ?? 0) + item.quantity,
-          );
-        }
-        setProducts((current) =>
-          current.map((product) => {
-            const restored = restoredQuantities.get(product.id);
-            if (restored === undefined) return product;
-            const stockQuantity = product.stockQuantity + restored;
-            return {
-              ...product,
-              stockQuantity,
-              status: stockQuantity > 0 ? 'AVAILABLE' : product.status,
-            };
-          }),
+      const cancelledOrder = parseOrderConfirmation(payload);
+      const restoredQuantities = new Map<string, number>();
+      for (const item of cancelledOrder.orderItems) {
+        restoredQuantities.set(
+          item.productId,
+          (restoredQuantities.get(item.productId) ?? 0) + item.quantity,
         );
       }
+      setProducts((current) =>
+        current.map((product) => {
+          const restored = restoredQuantities.get(product.id);
+          if (restored === undefined) return product;
+          const stockQuantity = product.stockQuantity + restored;
+          return {
+            ...product,
+            stockQuantity,
+            status: stockQuantity > 0 ? 'AVAILABLE' : product.status,
+          };
+        }),
+      );
 
       setPendingPaymentOrder(null);
       setOrderConfirmation({
-        ...updatedOrder,
-        orderItems: updatedOrder.orderItems.map((item) => ({
+        ...cancelledOrder,
+        orderItems: cancelledOrder.orderItems.map((item) => ({
           ...item,
           isStandaloneTopping:
             products.find((product) => product.id === item.productId)
               ?.category === 'TOPPING',
         })),
       });
-      if (outcome === 'SUCCESS' && user) void loadLoyalty();
     } catch (error) {
       setPaymentError(
         error instanceof Error
@@ -457,7 +495,7 @@ export default function MenuPage() {
           : 'Không thể kết nối đến máy chủ.',
       );
     } finally {
-      setIsSimulatingPayment(false);
+      setIsCancellingPayment(false);
     }
   }
 
@@ -477,11 +515,63 @@ export default function MenuPage() {
       })),
       true,
       cartOrderNote,
+      getRedeemablePoints(cartTotal),
     );
   }
 
-  async function loadOrderHistory() {
-    setLoadingOrders(true);
+  const activeTrackedOrderId =
+    orderConfirmation?.id ?? pendingPaymentOrder?.order.id;
+  const syncTrackedOrderStatus = useCallback(
+    (orderHistory: OrderHistoryEntry[]) => {
+      if (pendingPaymentOrder) {
+        const matchingOrder = orderHistory.find(
+          (order) => order.id === pendingPaymentOrder.order.id,
+        );
+        if (!matchingOrder || matchingOrder.status === 'PENDING') return;
+
+        setPendingPaymentOrder((current) =>
+          current?.order.id === matchingOrder.id ? null : current,
+        );
+        setOrderConfirmation((current) => ({
+          ...(current?.id === matchingOrder.id
+            ? current
+            : pendingPaymentOrder.order),
+          status: matchingOrder.status,
+          rejectionReason: matchingOrder.rejectionReason,
+        }));
+        void loadMenu(accessToken);
+        return;
+      }
+
+      if (orderConfirmation) {
+        const matchingOrder = orderHistory.find(
+          (order) => order.id === orderConfirmation.id,
+        );
+        if (
+          matchingOrder &&
+          (matchingOrder.status !== orderConfirmation.status ||
+            matchingOrder.rejectionReason !==
+              orderConfirmation.rejectionReason)
+        ) {
+          setOrderConfirmation((current) =>
+            current?.id === matchingOrder.id
+              ? {
+                  ...current,
+                  status: matchingOrder.status,
+                  rejectionReason: matchingOrder.rejectionReason,
+                }
+              : current,
+          );
+        }
+        return;
+      }
+
+    },
+    [accessToken, loadMenu, orderConfirmation, pendingPaymentOrder],
+  );
+
+  const loadOrderHistory = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoadingOrders(true);
     setOrdersError(null);
     try {
       if (user && accessToken) {
@@ -492,7 +582,9 @@ export default function MenuPage() {
         if (!response.ok) {
           throw new Error(readErrorMessage(payload, 'Không thể tải đơn hàng.'));
         }
-        setMyOrders(parseOrderHistory(payload));
+        const orderHistory = parseOrderHistory(payload);
+        setMyOrders(orderHistory);
+        syncTrackedOrderStatus(orderHistory);
         return;
       }
 
@@ -518,6 +610,7 @@ export default function MenuPage() {
           new Date(left.createdAt).getTime(),
       );
       setMyOrders(orderResults);
+      syncTrackedOrderStatus(orderResults);
     } catch (error) {
       setOrdersError(
         error instanceof Error
@@ -525,18 +618,29 @@ export default function MenuPage() {
           : 'Không thể kết nối đến máy chủ.',
       );
     } finally {
-      setLoadingOrders(false);
+      if (showLoading) setLoadingOrders(false);
     }
-  }
+  }, [accessToken, syncTrackedOrderStatus, user]);
 
-  async function loadLoyalty() {
-    if (!user || !accessToken) return;
+  useEffect(() => {
+    if (!ordersOpen && !activeTrackedOrderId) return;
+    const intervalId = window.setInterval(() => {
+      void loadOrderHistory(false);
+    }, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [activeTrackedOrderId, loadOrderHistory, ordersOpen]);
+
+  const loadLoyalty = useCallback(async (
+    token = accessToken,
+    isAuthenticated = Boolean(user),
+  ) => {
+    if (!isAuthenticated || !token) return;
 
     setLoadingLoyalty(true);
     setLoyaltyError(null);
     try {
       const response = await fetch(`${apiUrl}/orders/loyalty/mine`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
@@ -554,9 +658,46 @@ export default function MenuPage() {
     } finally {
       setLoadingLoyalty(false);
     }
-  }
+  }, [accessToken, user]);
+
+  useEffect(() => {
+    if (sessionRestoreStarted.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      sessionRestoreStarted.current = true;
+      try {
+        const savedSession = window.sessionStorage.getItem(customerSessionKey);
+        if (savedSession) {
+          const parsed: unknown = JSON.parse(savedSession);
+          const restoredSession = parseLoginResult(parsed);
+          if (restoredSession.user.role !== 'CUSTOMER') {
+            throw new Error('Phiên đăng nhập khách hàng không hợp lệ.');
+          }
+          setAccessToken(restoredSession.accessToken);
+          setUser(restoredSession.user);
+          setDeliveryPhone(restoredSession.user.phone ?? '');
+          setScreen('menu');
+          void loadMenu(restoredSession.accessToken);
+          void loadLoyalty(restoredSession.accessToken, true);
+        }
+      } catch (error) {
+        window.sessionStorage.removeItem(customerSessionKey);
+        console.error('Không thể khôi phục phiên khách hàng:', error);
+      } finally {
+        setSessionReady(true);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loadLoyalty, loadMenu]);
 
   async function cancelOrder(orderId: string) {
+    if (
+      !window.confirm(
+        'Bạn có chắc chắn muốn hủy đơn hàng này? Hành động này không thể hoàn tác.',
+      )
+    ) {
+      return;
+    }
+
     setCancellingOrderId(orderId);
     setOrdersError(null);
     try {
@@ -598,6 +739,7 @@ export default function MenuPage() {
 
       if (!cancelled) throw new Error('Không tìm thấy đơn hàng cần hủy.');
       await loadOrderHistory();
+      if (user) await loadLoyalty();
     } catch (error) {
       setOrdersError(
         error instanceof Error
@@ -606,6 +748,85 @@ export default function MenuPage() {
       );
     } finally {
       setCancellingOrderId(null);
+    }
+  }
+
+  async function retryPayment(orderId: string) {
+    setRetryingPaymentOrderId(orderId);
+    setOrdersError(null);
+    try {
+      const tokens = user ? [] : getGuestOrderTokens();
+      const guestTokens = user ? [null] : tokens;
+      if (guestTokens.length === 0) {
+        throw new Error(
+          'Không tìm thấy mã truy cập đơn hàng trên thiết bị này.',
+        );
+      }
+
+      let retriedOrder: OrderConfirmation | null = null;
+      let guestAccessToken: string | null = null;
+      for (const token of guestTokens) {
+        const response = await fetch(
+          `${apiUrl}/orders/${encodeURIComponent(orderId)}/payments/retry`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(user && accessToken
+                ? { Authorization: `Bearer ${accessToken}` }
+                : {}),
+            },
+            body: JSON.stringify({
+              paymentMethod,
+              ...(token ? { guestAccessToken: token } : {}),
+            }),
+          },
+        );
+        const payload: unknown = await response.json();
+        if (response.status === 404 && !user) continue;
+        if (!response.ok) {
+          throw new Error(
+            readErrorMessage(payload, 'Không thể thanh toán lại đơn hàng.'),
+          );
+        }
+        retriedOrder = parseOrderConfirmation(payload);
+        guestAccessToken = token;
+        break;
+      }
+
+      if (!retriedOrder) {
+        throw new Error('Không tìm thấy đơn hàng cần thanh toán lại.');
+      }
+
+      const reservedQuantities = new Map<string, number>();
+      for (const item of retriedOrder.orderItems) {
+        reservedQuantities.set(
+          item.productId,
+          (reservedQuantities.get(item.productId) ?? 0) + item.quantity,
+        );
+      }
+      setProducts((current) =>
+        current.map((product) => {
+          const reserved = reservedQuantities.get(product.id);
+          if (reserved === undefined) return product;
+          const stockQuantity = Math.max(0, product.stockQuantity - reserved);
+          return {
+            ...product,
+            stockQuantity,
+            status: stockQuantity === 0 ? 'OUT_OF_STOCK' : product.status,
+          };
+        }),
+      );
+      setOrdersOpen(false);
+      setPendingPaymentOrder({ order: retriedOrder, guestAccessToken });
+    } catch (error) {
+      setOrdersError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể kết nối đến máy chủ.',
+      );
+    } finally {
+      setRetryingPaymentOrderId(null);
     }
   }
 
@@ -634,6 +855,13 @@ export default function MenuPage() {
       }
 
       const result = parseLoginResult(payload);
+      if (result.user.role !== 'CUSTOMER') {
+        throw new Error('Vui lòng đăng nhập bằng tài khoản khách hàng.');
+      }
+      window.sessionStorage.setItem(
+        customerSessionKey,
+        JSON.stringify(result),
+      );
       setAccessToken(result.accessToken);
       setUser(result.user);
       setDeliveryPhone(result.user.phone ?? '');
@@ -641,6 +869,7 @@ export default function MenuPage() {
       setLoginNotice(null);
       setScreen('menu');
       await loadMenu(result.accessToken);
+      void loadLoyalty(result.accessToken, true);
 
       const nextAction = pendingOrderAction;
       setPendingOrderAction(null);
@@ -711,11 +940,14 @@ export default function MenuPage() {
   }
 
   function logout() {
+    window.sessionStorage.removeItem(customerSessionKey);
     setAccessToken(null);
     setUser(null);
     setOrdersOpen(false);
     setMyOrders([]);
     setLoyalty(null);
+    setRedeemPoints(0);
+    setChangePasswordOpen(false);
     setConfigProduct(null);
     setPendingOrderAction(null);
     setScreen('menu');
@@ -732,6 +964,14 @@ export default function MenuPage() {
       onClearError={() => setOrderError(null)}
     />
   );
+
+  if (!sessionReady) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f7f4ed] text-sm text-[#69746b]">
+        Đang tải phiên đăng nhập...
+      </main>
+    );
+  }
 
   if (screen !== 'menu') {
     return (
@@ -784,8 +1024,20 @@ export default function MenuPage() {
       <MenuHeader
         user={user}
         cartCount={cartCount}
+        selectedCategoryLabel={
+          selectedMenuCategory === 'ALL'
+            ? 'Tất cả món'
+            : selectedMenuCategory === 'UNCATEGORIZED'
+              ? 'Chưa phân loại'
+              : (productCategories.find(
+                  ({ value }) => value === selectedMenuCategory,
+                )?.label ?? 'Tất cả món')
+        }
+        categoryMenuOpen={categoryMenuOpen}
         onOpenOrders={openOrderHistory}
-        onOpenCart={() => setCartOpen(true)}
+        onChangePassword={() => setChangePasswordOpen(true)}
+        onOpenCart={openCart}
+        onOpenCategories={() => setCategoryMenuOpen(true)}
         onLogout={logout}
         onLogin={() => {
           setAuthReturnScreen('menu');
@@ -805,7 +1057,11 @@ export default function MenuPage() {
           loading={loadingMenu}
           error={menuError}
           searchName={searchName}
+          selectedCategory={selectedMenuCategory}
+          categoryMenuOpen={categoryMenuOpen}
           onSearchChange={setSearchName}
+          onSelectCategory={setSelectedMenuCategory}
+          onCloseCategoryMenu={() => setCategoryMenuOpen(false)}
           onRetry={() => void loadMenu(accessToken)}
           onBuyNow={(product) => openProductOptions(product, 'buyNow')}
           onAddToCart={(product) => openProductOptions(product, 'cart')}
@@ -815,6 +1071,17 @@ export default function MenuPage() {
           items={cartItems}
           count={cartCount}
           total={cartTotal}
+          loyaltyRedemption={
+            user ? (
+              <LoyaltyRedemptionField
+                balance={loyalty?.balance ?? null}
+                loading={loadingLoyalty}
+                subtotal={cartTotal}
+                points={redeemPoints}
+                onPointsChange={setRedeemPoints}
+              />
+            ) : null
+          }
           notice={cartNotice}
           note={cartOrderNote}
           isCreatingOrder={isCreatingOrder}
@@ -848,6 +1115,17 @@ export default function MenuPage() {
         note={directOrderNote}
         isCreatingOrder={isCreatingOrder}
         deliveryFields={deliveryFields}
+        loyaltyRedemption={
+          user && configIntent === 'buyNow' ? (
+            <LoyaltyRedemptionField
+              balance={loyalty?.balance ?? null}
+              loading={loadingLoyalty}
+              subtotal={(configProduct?.price ?? 0) * configuredQuantity}
+              points={redeemPoints}
+              onPointsChange={setRedeemPoints}
+            />
+          ) : null
+        }
         onClose={() => setConfigProduct(null)}
         onSizeChange={setSelectedSize}
         onQuantityChange={setConfiguredQuantity}
@@ -859,7 +1137,10 @@ export default function MenuPage() {
 
       <OrderConfirmationDialog
         order={orderConfirmation}
+        cancellingOrder={cancellingOrderId === orderConfirmation?.id}
+        error={ordersError}
         onClose={() => setOrderConfirmation(null)}
+        onCancelOrder={(orderId) => void cancelOrder(orderId)}
         onViewOrders={() => {
           setOrderConfirmation(null);
           openOrderHistory();
@@ -869,10 +1150,10 @@ export default function MenuPage() {
       <MockPaymentDialog
         order={pendingPaymentOrder?.order ?? null}
         method={paymentMethod}
-        isProcessing={isSimulatingPayment}
+        isProcessing={isCancellingPayment}
         error={paymentError}
         onMethodChange={setPaymentMethod}
-        onSimulate={(outcome) => void simulateMockPayment(outcome)}
+        onCancelPayment={() => void cancelPendingPayment()}
       />
 
       <OrderHistoryDialog
@@ -884,9 +1165,25 @@ export default function MenuPage() {
         error={ordersError}
         loading={loadingOrders}
         cancellingOrderId={cancellingOrderId}
+        retryingPaymentOrderId={retryingPaymentOrderId}
         onClose={() => setOrdersOpen(false)}
         onCancelOrder={(orderId) => void cancelOrder(orderId)}
+        onRetryPayment={(orderId) => void retryPayment(orderId)}
       />
+      {changePasswordOpen && accessToken && (
+        <ChangePasswordDialog
+          accessToken={accessToken}
+          onClose={() => setChangePasswordOpen(false)}
+        />
+      )}
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        aria-label="Trở về đầu trang"
+        className="fixed bottom-5 right-5 z-20 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#304b39] text-xl font-semibold text-white shadow-lg transition hover:-translate-y-1 hover:bg-[#243b2c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#304b39]"
+      >
+        <span aria-hidden="true">↑</span>
+      </button>
     </main>
   );
 }

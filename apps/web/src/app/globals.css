@@ -24,3 +24,31 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.form-input {
+  min-height: 2.75rem;
+  width: 100%;
+  border: 1px solid #dfe4dc;
+  border-radius: 0.75rem;
+  background: white;
+  padding: 0.625rem 0.875rem;
+  color: #25372b;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.form-input:focus {
+  border-color: #739077;
+  box-shadow: 0 0 0 4px rgb(115 144 119 / 10%);
+}
+
+@keyframes menu-drawer-enter {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}

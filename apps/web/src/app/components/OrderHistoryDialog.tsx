@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { LoyaltySummary, OrderHistoryEntry } from '../types';
 
 interface OrderHistoryDialogProps {
@@ -11,8 +12,10 @@ interface OrderHistoryDialogProps {
   error: string | null;
   loading: boolean;
   cancellingOrderId: string | null;
+  retryingPaymentOrderId: string | null;
   onClose: () => void;
   onCancelOrder: (orderId: string) => void;
+  onRetryPayment: (orderId: string) => void;
 }
 
 function formatToppings(value: string | null): string {
@@ -34,7 +37,7 @@ function formatToppings(value: string | null): string {
 const orderStatusLabels: Record<string, string> = {
   PENDING: 'Chờ xác nhận',
   CONFIRMED: 'Đã xác nhận',
-  PREPARING: 'Đang chuẩn bị',
+  PREPARING: 'Đang pha chế',
   READY: 'Sẵn sàng',
   DELIVERING: 'Đang giao',
   COMPLETED: 'Hoàn tất',
@@ -51,10 +54,20 @@ export function OrderHistoryDialog({
   error,
   loading,
   cancellingOrderId,
+  retryingPaymentOrderId,
   onClose,
   onCancelOrder,
+  onRetryPayment,
 }: OrderHistoryDialogProps) {
+  const [orderCodeQuery, setOrderCodeQuery] = useState('');
   if (!open) return null;
+  const normalizedOrderCode = orderCodeQuery.trim().toLocaleUpperCase('vi');
+  const filteredOrders = normalizedOrderCode
+    ? orders.filter((order) =>
+        order.orderCode.toLocaleUpperCase('vi').includes(normalizedOrderCode) ||
+        order.id.toLocaleUpperCase('vi').includes(normalizedOrderCode),
+      )
+    : orders;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-0 sm:items-center sm:p-4">
@@ -137,6 +150,16 @@ export function OrderHistoryDialog({
             {error}
           </p>
         )}
+        <label className="mt-5 block text-sm font-medium text-[#46544a]">
+          Tìm hóa đơn theo mã đơn hoặc ID
+          <input
+            type="search"
+            value={orderCodeQuery}
+            onChange={(event) => setOrderCodeQuery(event.target.value)}
+            placeholder="Nhập mã đơn hoặc ID hóa đơn"
+            className="mt-2 min-h-11 w-full rounded-xl border border-[#dce2da] bg-white px-4 text-[#26382d] outline-none focus:border-[#607e65] focus:ring-4 focus:ring-[#607e65]/10"
+          />
+        </label>
         {loading ? (
           <p className="py-12 text-center text-sm text-[#69746b]">
             Đang tải đơn hàng...
@@ -145,9 +168,14 @@ export function OrderHistoryDialog({
           <p className="py-12 text-center text-sm text-[#69746b]">
             Bạn chưa có đơn hàng nào trên thiết bị hoặc tài khoản này.
           </p>
+        ) : filteredOrders.length === 0 ? (
+          <p className="py-12 text-center text-sm text-[#69746b]">
+            Không tìm thấy hóa đơn trong các đơn hàng thuộc tài khoản hoặc thiết
+            bị này.
+          </p>
         ) : (
           <ul className="mt-6 space-y-4">
-            {orders.map((order) => (
+            {filteredOrders.map((order) => (
               <li
                 key={order.id}
                 className="rounded-2xl border border-[#e7e2d7] p-4 sm:p-5"
@@ -202,23 +230,58 @@ export function OrderHistoryDialog({
                       <span className="font-medium">Ghi chú:</span> {order.note}
                     </p>
                   )}
+                  {order.rejectionReason && (
+                    <p className="text-red-700">
+                      <span className="font-medium">Lý do hủy / từ chối:</span>{' '}
+                      {order.rejectionReason}
+                    </p>
+                  )}
                 </div>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-base font-semibold">
-                    Tổng cộng: {order.totalAmount.toLocaleString('vi-VN')} đ
-                  </p>
-                  {order.status === 'PENDING' && (
-                    <button
-                      type="button"
-                      disabled={cancellingOrderId !== null}
-                      onClick={() => onCancelOrder(order.id)}
-                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {cancellingOrderId === order.id
-                        ? 'Đang hủy...'
-                        : 'Hủy đơn hàng'}
-                    </button>
-                  )}
+                  <div className="text-sm">
+                    {order.discountAmount > 0 && (
+                      <p className="text-[#28764a]">
+                        Đã giảm {order.discountAmount.toLocaleString('vi-VN')} đ
+                      </p>
+                    )}
+                    <p className="text-base font-semibold">
+                      Tổng cộng: {order.totalAmount.toLocaleString('vi-VN')} đ
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(order.status === 'PAYMENT_FAILED' ||
+                      order.canRetryPayment) && (
+                      <button
+                        type="button"
+                        disabled={
+                          cancellingOrderId !== null ||
+                          retryingPaymentOrderId !== null
+                        }
+                        onClick={() => onRetryPayment(order.id)}
+                        className="rounded-xl bg-[#304b39] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#243b2c] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {retryingPaymentOrderId === order.id
+                          ? 'Đang xử lý...'
+                          : 'Thanh toán lại'}
+                      </button>
+                    )}
+                    {(order.status === 'PENDING' ||
+                      order.status === 'CONFIRMED') && (
+                      <button
+                        type="button"
+                        disabled={
+                          cancellingOrderId !== null ||
+                          retryingPaymentOrderId !== null
+                        }
+                        onClick={() => onCancelOrder(order.id)}
+                        className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {cancellingOrderId === order.id
+                          ? 'Đang hủy...'
+                          : 'Hủy đơn hàng'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}

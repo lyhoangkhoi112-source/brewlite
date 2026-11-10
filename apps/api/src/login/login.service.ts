@@ -1,12 +1,18 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+const PASSWORD_HASH_ROUNDS = 10;
 
 function positiveInteger(value: string | undefined, name: string, fallback: number): number {
   const parsed = Number(value ?? fallback);
@@ -48,7 +54,11 @@ export class LoginService {
       where: { email: credentials.email },
     });
 
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    if (!user || user.status === UserStatus.INACTIVE) {
+      throw new UnauthorizedException('Tài khoản không tồn tại');
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Tài khoản không tồn tại hoặc đã bị khóa');
     }
 
@@ -92,6 +102,35 @@ export class LoginService {
         role: user.role,
       },
     };
+  }
+
+  async changePassword(userId: string, input: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true, role: true, status: true },
+    });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException(
+        'Tài khoản không tồn tại hoặc không hoạt động',
+      );
+    }
+    if (user.role !== UserRole.CUSTOMER) {
+      throw new ForbiddenException('Chức năng này chỉ dành cho khách hàng');
+    }
+    if (!(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không chính xác');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(
+          input.newPassword,
+          PASSWORD_HASH_ROUNDS,
+        ),
+      },
+    });
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   private async recordFailedAttempt(

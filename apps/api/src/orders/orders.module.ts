@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 import { OrdersController } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 import { GuestOrJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard.js';
+import { StaffOrdersGuard } from './staff-orders.guard.js';
 
 @Module({
   imports: [
@@ -22,6 +23,11 @@ import { GuestOrJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard.js';
     }),
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, GuestOrJwtAuthGuard, JwtAuthGuard],
+  providers: [
+    OrdersService,
+    GuestOrJwtAuthGuard,
+    JwtAuthGuard,
+    StaffOrdersGuard,
+  ],
 })
 export class OrdersModule {}

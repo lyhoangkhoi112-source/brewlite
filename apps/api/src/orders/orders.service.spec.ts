@@ -5,6 +5,7 @@ import {
   PaymentStatus,
   Prisma,
   ProductStatus,
+  UserStatus,
 } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -17,6 +18,7 @@ describe('OrdersService', () => {
     user: {
       findUnique: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
     product: {
       findUnique: ReturnType<typeof vi.fn>;
@@ -29,9 +31,14 @@ describe('OrdersService', () => {
       updateMany: ReturnType<typeof vi.fn>;
       findUniqueOrThrow: ReturnType<typeof vi.fn>;
     };
-    payment: { updateMany: ReturnType<typeof vi.fn> };
+    payment: {
+      create: ReturnType<typeof vi.fn>;
+      findUnique: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     loyaltyTransaction: {
       create: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
@@ -58,8 +65,13 @@ describe('OrdersService', () => {
   beforeEach(async () => {
     prisma = {
       user: {
-        findUnique: vi.fn().mockResolvedValue({ id: userId }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: userId,
+          status: UserStatus.ACTIVE,
+          loyaltyPoints: 5,
+        }),
         update: vi.fn().mockResolvedValue({ loyaltyPoints: 5 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       product: {
         findUnique: vi.fn().mockResolvedValue(latte),
@@ -74,6 +86,7 @@ describe('OrdersService', () => {
         }),
         findMany: vi.fn().mockResolvedValue([]),
         findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn().mockResolvedValue(null),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'order-id',
@@ -82,9 +95,14 @@ describe('OrdersService', () => {
           orderItems: [],
         }),
       },
-      payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      payment: {
+        create: vi.fn().mockResolvedValue({ id: 'retry-payment-id' }),
+        findUnique: vi.fn().mockResolvedValue(null),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       loyaltyTransaction: {
         create: vi.fn().mockResolvedValue({}),
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
       $transaction: vi.fn(
@@ -275,6 +293,9 @@ describe('OrdersService', () => {
     const createData = prisma.order.create.mock.calls[0][0].data;
     expect(prisma.user.findUnique).not.toHaveBeenCalled();
     expect(createData.userId).toBeNull();
+    if (!('guestAccessToken' in result)) {
+      throw new Error('Đơn khách phải có guestAccessToken');
+    }
     expect(result.guestAccessToken).toMatch(/^[a-f0-9]{64}$/);
     expect(createData.guestAccessTokenHash).toBe(
       createHash('sha256').update(result.guestAccessToken).digest('hex'),
@@ -284,17 +305,115 @@ describe('OrdersService', () => {
     expect(createData.contactPhone).toBe(guestRequest.contactPhone);
   });
 
+  it('redeems account points for a discount capped at 20 percent', async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce({
+        id: userId,
+        status: UserStatus.ACTIVE,
+        loyaltyPoints: 10,
+      })
+      .mockResolvedValueOnce({ loyaltyPoints: 8 });
+
+    await service.createOrderForUser(
+      { ...request, redeemPoints: 2 },
+      userId,
+    );
+
+    const createData = prisma.order.create.mock.calls[0][0].data;
+    expect(createData.subtotal.toString()).toBe('50000');
+    expect(createData.discountAmount.toString()).toBe('6000');
+    expect(createData.totalAmount.toString()).toBe('44000');
+    expect(createData.payments.create.amount.toString()).toBe('44000');
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: userId, loyaltyPoints: { gte: 2 } },
+      data: { loyaltyPoints: { decrement: 2 } },
+    });
+    expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+      data: {
+        userId,
+        orderId: 'order-id',
+        type: 'REDEEM',
+        points: 2,
+        balanceAfter: 8,
+        description: 'Đổi điểm cho đơn BL-test',
+      },
+    });
+  });
+
+  it('refunds redeemed points when staff cancels the order', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      orderCode: 'BL-test',
+      status: OrderStatus.CONFIRMED,
+      userId,
+      orderItems: [{ productId, quantity: 2 }],
+    });
+    prisma.loyaltyTransaction.findMany.mockResolvedValue([
+      { type: 'REDEEM', points: 2 },
+    ]);
+    prisma.user.findUnique.mockResolvedValue({ loyaltyPoints: 3 });
+    prisma.user.update.mockResolvedValue({ loyaltyPoints: 5 });
+
+    await service.cancelStaffOrder('order-id');
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: { loyaltyPoints: { increment: 2 } },
+      select: { loyaltyPoints: true },
+    });
+    expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+      data: {
+        userId,
+        orderId: 'order-id',
+        type: 'ADJUST',
+        points: 2,
+        balanceAfter: 5,
+        description: 'Hoàn điểm từ đơn đã hủy BL-test',
+      },
+    });
+  });
+
+  it('rejects point redemption that exceeds the order discount limit', async () => {
+    await expect(
+      service.createOrderForUser({ ...request, redeemPoints: 4 }, userId),
+    ).rejects.toThrow('Đơn hàng chỉ được đổi tối đa 3 điểm');
+
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.order.create).not.toHaveBeenCalled();
+  });
+
+  it('does not allow guests to redeem loyalty points', async () => {
+    await expect(
+      service.createOrder({ ...request, redeemPoints: 1 }),
+    ).rejects.toThrow('Đăng nhập để sử dụng điểm khách hàng');
+
+    expect(prisma.order.create).not.toHaveBeenCalled();
+  });
+
   it('associates authenticated orders with the verified user ID', async () => {
     await service.createOrderForUser(request, userId);
 
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     expect(prisma.order.create.mock.calls[0][0].data).toMatchObject({
       userId,
       guestAccessTokenHash: null,
     });
+  });
+
+  it('rejects authenticated orders for an inactive account', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: userId,
+      status: UserStatus.INACTIVE,
+    });
+
+    await expect(service.createOrderForUser(request, userId)).rejects.toThrow(
+      'Tài khoản không còn hoạt động',
+    );
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('creates a pending payment for a selected mock provider', async () => {
@@ -428,6 +547,200 @@ describe('OrdersService', () => {
     },
   );
 
+  it('returns limited payment details for a mock checkout link', async () => {
+    prisma.payment.findUnique.mockResolvedValue({
+      id: 'payment-id',
+      amount: new Prisma.Decimal('50000'),
+      method: PaymentMethod.MOMO,
+      status: PaymentStatus.PENDING,
+      order: {
+        orderCode: 'BL-test',
+        status: OrderStatus.PENDING,
+      },
+    });
+
+    await expect(service.getMockPaymentDetails('payment-id')).resolves.toEqual({
+      paymentId: 'payment-id',
+      amount: new Prisma.Decimal('50000'),
+      method: PaymentMethod.MOMO,
+      paymentStatus: PaymentStatus.PENDING,
+      orderCode: 'BL-test',
+      orderStatus: OrderStatus.PENDING,
+    });
+  });
+
+  it('processes a mock payment through its deep link payment id', async () => {
+    prisma.payment.findUnique.mockResolvedValue({ orderId: 'order-id' });
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      orderCode: 'BL-test',
+      userId,
+      status: OrderStatus.PENDING,
+      totalAmount: new Prisma.Decimal('50000'),
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await service.simulateMockPaymentFromLink('payment-id', {
+      outcome: 'SUCCESS',
+    });
+
+    expect(prisma.order.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'order-id' },
+      }),
+    );
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'payment-id',
+          orderId: 'order-id',
+          status: PaymentStatus.PENDING,
+        }),
+      }),
+    );
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-id', status: OrderStatus.PENDING },
+      data: { status: OrderStatus.CONFIRMED },
+    });
+  });
+
+  it('creates a new pending payment and reserves stock when retrying a failed order', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.PAYMENT_FAILED,
+      totalAmount: new Prisma.Decimal('50000'),
+      orderItems: [
+        { productId, quantity: 1 },
+        { productId, quantity: 1 },
+      ],
+    });
+
+    await service.retryMockPayment(
+      'order-id',
+      { paymentMethod: 'VNPAY' },
+      userId,
+    );
+
+    expect(prisma.product.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: productId,
+        status: ProductStatus.AVAILABLE,
+        stockQuantity: { gte: 2 },
+      },
+      data: { stockQuantity: { decrement: 2 } },
+    });
+    expect(prisma.payment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orderId: 'order-id',
+        amount: new Prisma.Decimal('50000'),
+        method: PaymentMethod.VNPAY,
+      }),
+    });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'order-id',
+        status: OrderStatus.PAYMENT_FAILED,
+        userId,
+      },
+      data: { status: OrderStatus.PENDING },
+    });
+    expect(prisma.order.findUniqueOrThrow).toHaveBeenCalledOnce();
+  });
+
+  it('creates a new pending payment when retrying a cancelled mock payment', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.CANCELLED,
+      totalAmount: new Prisma.Decimal('50000'),
+      payments: [
+        {
+          status: PaymentStatus.CANCELLED,
+          failureReason: 'Mock payment cancelled',
+        },
+      ],
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await service.retryMockPayment('order-id', {}, userId);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'order-id',
+        status: OrderStatus.CANCELLED,
+        userId,
+      },
+      data: { status: OrderStatus.PENDING },
+    });
+    expect(prisma.payment.create).toHaveBeenCalledOnce();
+  });
+
+  it('does not retry an order cancelled for another reason', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.CANCELLED,
+      totalAmount: new Prisma.Decimal('50000'),
+      payments: [
+        {
+          status: PaymentStatus.CANCELLED,
+          failureReason: 'Đơn hàng đã được khách hàng hủy',
+        },
+      ],
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await expect(
+      service.retryMockPayment('order-id', {}, userId),
+    ).rejects.toThrow(
+      'Chỉ có thể thanh toán lại đơn hàng thất bại hoặc giao dịch đã hủy',
+    );
+
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('does not retry after a cancelled order has a newer successful payment', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.CANCELLED,
+      totalAmount: new Prisma.Decimal('50000'),
+      payments: [
+        {
+          status: PaymentStatus.SUCCESS,
+          failureReason: null,
+        },
+      ],
+      orderItems: [{ productId, quantity: 1 }],
+    });
+
+    await expect(
+      service.retryMockPayment('order-id', {}, userId),
+    ).rejects.toThrow(
+      'Chỉ có thể thanh toán lại đơn hàng thất bại hoặc giao dịch đã hủy',
+    );
+
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reopen a failed order when its products are no longer in stock', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      status: OrderStatus.PAYMENT_FAILED,
+      totalAmount: new Prisma.Decimal('50000'),
+      orderItems: [{ productId, quantity: 2 }],
+    });
+    prisma.product.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.retryMockPayment('order-id', {}, userId),
+    ).rejects.toThrow(
+      'Sản phẩm trong đơn hiện không đủ số lượng để thanh toán lại',
+    );
+
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
   it('gets loyalty balance and the latest transactions', async () => {
     prisma.user.findUnique.mockResolvedValue({
       loyaltyPoints: 12,
@@ -466,6 +779,7 @@ describe('OrdersService', () => {
       expect.objectContaining({
         where: {
           userId: null,
+          deletedAt: null,
           guestAccessTokenHash: {
             in: [createHash('sha256').update(token).digest('hex')],
           },
@@ -478,30 +792,197 @@ describe('OrdersService', () => {
     await service.getOrdersForUser(userId);
 
     expect(prisma.order.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId } }),
+      expect.objectContaining({ where: { userId, deletedAt: null } }),
     );
   });
 
-  it('cancels a pending order and restores its stock', async () => {
+  it('only marks an order retryable when its latest cancelled payment was user-cancelled', async () => {
+    prisma.order.findMany.mockResolvedValue([
+      {
+        id: 'order-id',
+        status: OrderStatus.CANCELLED,
+        payments: [
+          { status: PaymentStatus.SUCCESS, failureReason: null },
+        ],
+      },
+      {
+        id: 'another-order-id',
+        status: OrderStatus.CANCELLED,
+        payments: [
+          {
+            status: PaymentStatus.CANCELLED,
+            failureReason: 'Mock payment cancelled',
+          },
+        ],
+      },
+    ]);
+
+    await expect(service.getOrdersForUser(userId)).resolves.toEqual([
+      expect.objectContaining({
+        id: 'order-id',
+        canRetryPayment: false,
+      }),
+      expect.objectContaining({
+        id: 'another-order-id',
+        canRetryPayment: true,
+      }),
+    ]);
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { status: true, failureReason: true },
+          },
+        }),
+      }),
+    );
+  });
+
+  it('excludes soft-deleted orders from the staff work list', async () => {
+    await service.getStaffOrders();
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deletedAt: null } }),
+    );
+  });
+
+  it('searches staff orders by the exact order code or invoice id', async () => {
+    prisma.order.findFirst.mockResolvedValue({ id: 'order-id' });
+
+    await service.searchStaffOrder(' BL-test ');
+    await service.searchStaffOrder('01234567-89ab-4cde-8f01-23456789abcd');
+
+    expect(prisma.order.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          OR: [
+            {
+              orderCode: {
+                equals: 'BL-test',
+                mode: 'insensitive',
+              },
+            },
+            { id: 'BL-test' },
+          ],
+        },
+      }),
+    );
+    expect(prisma.order.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          OR: [
+            {
+              orderCode: {
+                equals: '01234567-89ab-4cde-8f01-23456789abcd',
+                mode: 'insensitive',
+              },
+            },
+            { id: '01234567-89ab-4cde-8f01-23456789abcd' },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('returns a clear not-found error for unknown invoice identifiers', async () => {
+    prisma.order.findFirst.mockResolvedValue(null);
+
+    await expect(service.searchStaffOrder('BL-unknown')).rejects.toThrow(
+      'Không tìm thấy đơn hàng theo mã đã nhập',
+    );
+  });
+
+  it('soft-deletes ready, completed, or cancelled orders', async () => {
+    prisma.order.findFirst.mockResolvedValue({ id: 'order-id' });
+
+    await service.softDeleteStaffOrder('order-id');
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'order-id',
+        deletedAt: null,
+        status: {
+          in: [OrderStatus.READY, OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+        },
+      },
+      data: { deletedAt: expect.any(Date) },
+    });
+  });
+
+  it('does not soft-delete orders that are still active', async () => {
+    await expect(service.softDeleteStaffOrder('order-id')).rejects.toThrow(
+      'Chỉ có thể xóa mềm đơn sẵn sàng, đã hoàn tất hoặc đã hủy',
+    );
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('updates staff order statuses only along the preparation flow', async () => {
     prisma.order.findFirst.mockResolvedValue({
       id: 'order-id',
-      status: 'PENDING',
+      payments: [],
+    });
+
+    await service.updateStaffOrderStatus('order-id', OrderStatus.PREPARING);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-id', status: OrderStatus.CONFIRMED },
+      data: { status: OrderStatus.PREPARING },
+    });
+  });
+
+  it('accepts a pending order only when it has no pending payment', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      payments: [],
+    });
+
+    await service.updateStaffOrderStatus('order-id', OrderStatus.CONFIRMED);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-id', status: OrderStatus.PENDING },
+      data: { status: OrderStatus.CONFIRMED },
+    });
+  });
+
+  it('does not accept an order while its payment is pending', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      payments: [{ id: 'payment-id' }],
+    });
+
+    await expect(
+      service.updateStaffOrderStatus('order-id', OrderStatus.CONFIRMED),
+    ).rejects.toThrow('Đơn hàng chưa hoàn tất thanh toán nên chưa thể nhận');
+
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a pending order, records the reason, cancels payment, and restores stock', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
       orderItems: [{ productId, quantity: 2 }],
     });
 
-    await service.cancelOrder('order-id', userId, []);
+    await service.rejectStaffOrder('order-id', '   Hết nguyên liệu   ');
 
-    expect(prisma.order.findFirst).toHaveBeenCalledWith({
-      where: { id: 'order-id', userId },
-      select: {
-        id: true,
-        status: true,
-        orderItems: { select: { productId: true, quantity: true } },
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-id', status: OrderStatus.PENDING },
+      data: {
+        status: OrderStatus.CANCELLED,
+        rejectionReason: 'Hết nguyên liệu',
       },
     });
-    expect(prisma.order.updateMany).toHaveBeenCalledWith({
-      where: { id: 'order-id', status: 'PENDING', userId },
-      data: { status: 'CANCELLED' },
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+      where: { orderId: 'order-id', status: PaymentStatus.PENDING },
+      data: {
+        status: PaymentStatus.CANCELLED,
+        failureReason: 'Hết nguyên liệu',
+      },
     });
     expect(prisma.product.updateMany).toHaveBeenCalledWith({
       where: { id: productId, status: ProductStatus.OUT_OF_STOCK },
@@ -512,6 +993,155 @@ describe('OrdersService', () => {
     });
   });
 
+  it('requires a non-blank reason to reject an order', async () => {
+    await expect(service.rejectStaffOrder('order-id', '   ')).rejects.toThrow(
+      'Vui lòng nhập lý do từ chối đơn hàng',
+    );
+
+    expect(prisma.order.findFirst).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [OrderStatus.PENDING, 'Hết nguyên liệu', 'Hết nguyên liệu'],
+    [OrderStatus.CONFIRMED, '   ', null],
+  ] as const)(
+    'allows staff to cancel a %s order with an optional reason',
+    async (status, reason, storedReason) => {
+      prisma.order.findFirst.mockResolvedValue({
+        id: 'order-id',
+        status,
+        orderItems: [{ productId, quantity: 2 }],
+      });
+
+      await service.cancelStaffOrder('order-id', reason);
+
+      expect(prisma.order.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'order-id',
+          status: { in: [OrderStatus.PENDING, OrderStatus.CONFIRMED] },
+        },
+        data: {
+          status: OrderStatus.CANCELLED,
+          rejectionReason: storedReason,
+        },
+      });
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { orderId: 'order-id', status: PaymentStatus.PENDING },
+        data: {
+          status: PaymentStatus.CANCELLED,
+          failureReason: storedReason ?? 'Đơn hàng đã bị nhân viên hủy',
+        },
+      });
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: productId, status: ProductStatus.OUT_OF_STOCK },
+        data: {
+          stockQuantity: { increment: 2 },
+          status: ProductStatus.AVAILABLE,
+        },
+      });
+    },
+  );
+
+  it('reverses loyalty points earned by an order when staff cancels it', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      orderCode: 'BL-test',
+      status: OrderStatus.CONFIRMED,
+      userId,
+      orderItems: [{ productId, quantity: 2 }],
+    });
+    prisma.loyaltyTransaction.findMany.mockResolvedValue([
+      { type: 'EARN', points: 5 },
+    ]);
+    prisma.user.findUnique.mockResolvedValue({ loyaltyPoints: 5 });
+    prisma.user.update.mockResolvedValue({ loyaltyPoints: 0 });
+
+    await service.cancelStaffOrder('order-id', 'Hủy theo yêu cầu khách');
+
+    expect(prisma.loyaltyTransaction.findMany).toHaveBeenCalledWith({
+      where: { orderId: 'order-id', type: { in: ['EARN', 'REDEEM'] } },
+      select: { type: true, points: true },
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: userId },
+      select: { loyaltyPoints: true },
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: { loyaltyPoints: { decrement: 5 } },
+      select: { loyaltyPoints: true },
+    });
+    expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+      data: {
+        userId,
+        orderId: 'order-id',
+        type: 'ADJUST',
+        points: -5,
+        balanceAfter: 0,
+        description: 'Thu hồi điểm từ đơn đã hủy BL-test',
+      },
+    });
+  });
+
+  it('does not allow staff to cancel an order after preparation starts', async () => {
+    prisma.order.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.cancelStaffOrder('order-id', 'Lý do bất kỳ'),
+    ).rejects.toThrow('Chỉ có thể hủy đơn hàng trước khi bắt đầu pha chế');
+
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([OrderStatus.PENDING, OrderStatus.CONFIRMED])(
+    'cancels a %s order and restores its stock',
+    async (status) => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'order-id',
+      orderCode: 'BL-test',
+      status,
+      userId,
+      orderItems: [{ productId, quantity: 2 }],
+    });
+
+    await service.cancelOrder('order-id', userId, []);
+
+    expect(prisma.order.findFirst).toHaveBeenCalledWith({
+      where: { id: 'order-id', userId },
+      select: {
+        id: true,
+        status: true,
+        userId: true,
+        orderCode: true,
+        orderItems: { select: { productId: true, quantity: true } },
+      },
+    });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'order-id',
+        status: { in: [OrderStatus.PENDING, OrderStatus.CONFIRMED] },
+        userId,
+      },
+      data: { status: 'CANCELLED' },
+    });
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+      where: { orderId: 'order-id', status: PaymentStatus.PENDING },
+      data: {
+        status: PaymentStatus.CANCELLED,
+        failureReason: 'Đơn hàng đã được khách hàng hủy',
+      },
+    });
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: productId, status: ProductStatus.OUT_OF_STOCK },
+      data: {
+        stockQuantity: { increment: 2 },
+        status: ProductStatus.AVAILABLE,
+      },
+    });
+    },
+  );
+
   it('does not reveal or modify an order without a matching owner token', async () => {
     await expect(
       service.cancelOrder('order-id', undefined, []),
@@ -521,15 +1151,15 @@ describe('OrdersService', () => {
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
   });
 
-  it('does not restore stock for an order that is no longer pending', async () => {
+  it('does not restore stock for an order that has started preparation', async () => {
     prisma.order.findFirst.mockResolvedValue({
       id: 'order-id',
-      status: 'CONFIRMED',
+      status: OrderStatus.PREPARING,
       orderItems: [{ productId, quantity: 2 }],
     });
 
     await expect(service.cancelOrder('order-id', userId, [])).rejects.toThrow(
-      'Chỉ có thể hủy đơn hàng đang chờ xác nhận',
+      'Chỉ có thể hủy đơn hàng trước khi bắt đầu pha chế',
     );
 
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
