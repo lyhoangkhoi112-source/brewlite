@@ -68,11 +68,6 @@ enum PaymentMethod {
   SHOPEEPAY
 }
 
-enum PromotionType {
-  PERCENTAGE
-  FIXED_AMOUNT
-}
-
 enum LoyaltyTransactionType {
   EARN
   REDEEM
@@ -98,7 +93,6 @@ model User {
   lockedUntil         DateTime?
   loyaltyPoints       Int         @default(0)
 
-  cart                Cart?
   orders              Order[]
   loyaltyTransactions LoyaltyTransaction[]
 }
@@ -113,32 +107,7 @@ model Product {
   imageUrl      String?
   status        ProductStatus @default(AVAILABLE)
 
-  cartItems  CartItem[]
   orderItems OrderItem[]
-}
-
-model Cart {
-  id        String   @id @default(uuid())
-  userId    String   @unique // 1 User có 0..1 Cart
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  items CartItem[]
-}
-
-model CartItem {
-  id               String   @id @default(uuid())
-  cartId           String
-  cart             Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId        String
-  product          Product  @relation(fields: [productId], references: [id])
-  quantity         Int      @default(1)
-  selectedSize     String?
-  sugarLevel       String?
-  iceLevel         String?
-  selectedToppings String?
-  unitPrice        Decimal  @db.Decimal(12, 2)
 }
 
 model Order {
@@ -147,8 +116,6 @@ model Order {
   guestAccessTokenHash String? @unique
   userId          String?
   user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  promotionId     String?
-  promotion       Promotion?  @relation(fields: [promotionId], references: [id])
   status          OrderStatus @default(PENDING)
   subtotal        Decimal     @db.Decimal(12, 2)
   discountAmount  Decimal     @default(0) @db.Decimal(12, 2)
@@ -194,22 +161,6 @@ model Payment {
   failureReason  String?
   paidAt         DateTime?
   createdAt      DateTime      @default(now())
-}
-
-model Promotion {
-  id                 String        @id @default(uuid())
-  code               String        @unique
-  description        String?
-  type               PromotionType
-  value              Decimal       @db.Decimal(12, 2)
-  minimumOrderAmount Decimal       @default(0) @db.Decimal(12, 2)
-  startAt            DateTime
-  endAt              DateTime
-  usageLimit         Int?
-  usedCount          Int           @default(0)
-  isActive           Boolean       @default(true)
-
-  orders Order[]
 }
 
 model LoyaltyTransaction {

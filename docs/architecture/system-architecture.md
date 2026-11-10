@@ -56,7 +56,7 @@ Backend của BrewLite được triển khai bằng NestJS theo phong cách **Ki
 │  - Order State Machine (assertTransition)              │
 │  - Idempotency Checker                                 │
 │  - Concurrency Control (Optimistic Locking)            │
-│  - Promotion & Loyalty Calculations                    │
+│  - Loyalty Calculations                                │
 └────────────────────────┬───────────────────────────────┘
                          │ (Domain Entities / Data Queries)
                          ▼
