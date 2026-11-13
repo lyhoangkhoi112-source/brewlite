@@ -16,8 +16,8 @@ RUN npx prisma generate
 COPY src ./src
 RUN npm run build
 
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV PORT=3001
 EXPOSE 3001
 
-CMD ["sh", "-c", "npm run db:setup && npm run start:prod"]
+CMD ["npm", "run", "start:prod"]
