@@ -181,7 +181,6 @@ jobs:
             "${RENDER_API_URL%/}/health"
 
       - name: Build and verify Vercel deployment before promotion
-        working-directory: apps/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
