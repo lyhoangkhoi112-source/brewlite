@@ -60,3 +60,8 @@ docker compose up --build
 Database Compose dùng thông tin đăng nhập mặc định chỉ dành cho local
 development; không dùng các credentials này ở môi trường chia sẻ hoặc production.
 API seed tạo các sản phẩm mẫu, không tạo tài khoản với mật khẩu mặc định.
+
+## 6. Triển khai production
+
+Hướng dẫn cấu hình GitHub Actions với Neon, Render và Vercel nằm tại
+[docs/deployment.md](./docs/deployment.md).

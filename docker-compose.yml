@@ -21,6 +21,7 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+    command: ["sh", "-c", "npm run db:setup && npm run start:prod"]
     environment:
       DATABASE_URL: postgresql://brewlite:brewlite_local_password@db:5432/brewlite?schema=public
       JWT_SECRET: local-only-brewlite-docker-secret
