@@ -57,4 +57,11 @@ describe('configureTestDatabase', () => {
 
     expect(configureTestDatabase).toThrow('local PostgreSQL database');
   });
+
+  it('rejects non-PostgreSQL connection strings', () => {
+    process.env.TEST_DATABASE_URL =
+      'mysql://test:test@localhost:5432/brewlite_test';
+
+    expect(configureTestDatabase).toThrow('PostgreSQL URL must be configured');
+  });
 });
