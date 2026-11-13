@@ -75,7 +75,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs:
-      - backend-ci
+      - api-quality
       - web-quality
     if: >-
       github.event_name == 'push' &&
