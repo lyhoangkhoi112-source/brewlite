@@ -1,0 +1,143 @@
+@startuml PlaceAndPayForOrder
+title Activity Diagram - Đặt và thanh toán đơn hàng (Task 2.1)
+
+skinparam conditionStyle inside diamond
+skinparam defaultTextAlignment center
+
+|Khách hàng|
+start
+:Xem thực đơn, chọn và tùy chỉnh sản phẩm;
+:Thêm sản phẩm vào giỏ hàng;
+:Bắt đầu đặt hàng;
+
+if (Đã đăng nhập?) then (Có)
+    :Tiếp tục với tài khoản khách hàng;
+    if (Đổi điểm thưởng?) then (Có)
+        :Chọn số điểm muốn đổi;
+    else (Không)
+    endif
+else (Không)
+    :Tiếp tục với tư cách khách vãng lai;
+    :Không đổi điểm thưởng;
+endif
+:Nhập địa chỉ và số điện thoại;
+
+|Frontend (Next.js UI)|
+:Kiểm tra giỏ hàng và thông tin giao hàng;
+if (Thông tin hợp lệ?) then (Có)
+    :Gửi yêu cầu tạo đơn;
+
+    |Backend (NestJS API)|
+    :Kiểm tra JWT nếu có và xác thực dữ liệu đơn;
+
+    |Database (PostgreSQL)|
+    :Đọc sản phẩm và tồn kho;
+
+    |Backend (NestJS API)|
+    if (Sản phẩm đang bán và đủ hàng?) then (Có)
+        :Tính tổng tiền và mức giảm tối đa;
+        if (Số điểm đổi hợp lệ?) then (Có)
+            |Database (PostgreSQL)|
+            :Trong transaction, kiểm tra và giữ điểm;
+            if (Số dư điểm đủ?) then (Có)
+                :Giảm tồn kho;
+                :Cấp mã đơn HD########;
+                :Tạo đơn, chi tiết đơn\nvà giao dịch PENDING;
+                :Commit transaction;
+
+                |Backend (NestJS API)|
+                :Trả thông tin đơn và mã truy cập khách (nếu có);
+
+                |Frontend (Next.js UI)|
+                :Lưu mã truy cập đơn khách (nếu có);
+                :Hiển thị xác nhận và mở thanh toán mô phỏng;
+
+                |Khách hàng|
+                repeat
+                    :Chọn kết quả thanh toán mô phỏng;
+
+                    |Frontend (Next.js UI)|
+                    :Gửi kết quả thanh toán;
+
+                    |Backend (NestJS API)|
+                    :Kiểm tra giao dịch và trạng thái đơn;
+                    if (Kết quả mô phỏng?) then (Thành công)
+                        |Database (PostgreSQL)|
+                        :Trong transaction, ghi payment SUCCESS;
+                        :Chuyển đơn sang CONFIRMED;
+                        :Cộng điểm thưởng nếu có tài khoản;
+                        :Commit transaction;
+
+                        |Frontend (Next.js UI)|
+                        :Hiển thị thanh toán thành công;
+                    else (Thất bại hoặc hủy)
+                        if (Khách hủy thanh toán?) then (Có)
+                            |Database (PostgreSQL)|
+                            :Trong transaction, ghi payment CANCELLED;
+                            :Chuyển đơn sang CANCELLED;
+                            :Hoàn điểm đã đổi và tồn kho;
+                        else (Không)
+                            |Database (PostgreSQL)|
+                            :Trong transaction, ghi payment FAILED;
+                            :Chuyển đơn sang PAYMENT_FAILED;
+                            :Hoàn tồn kho, giữ điểm đã đổi;
+                        endif
+                        :Commit transaction;
+
+                        |Frontend (Next.js UI)|
+                        :Hiển thị thanh toán thất bại hoặc đã hủy;
+
+                        |Khách hàng|
+                        if (Thử thanh toán lại?) then (Có)
+                            |Frontend (Next.js UI)|
+                            :Gửi yêu cầu thanh toán lại;
+
+                            |Backend (NestJS API)|
+                            :Kiểm tra đơn đủ điều kiện thử lại;
+
+                            |Database (PostgreSQL)|
+                            :Kiểm tra và giữ lại tồn kho;
+                            if (Đơn hợp lệ và còn hàng?) then (Có)
+                                :Tạo payment PENDING mới;
+                                :Chuyển đơn sang PENDING;
+                                :Commit transaction;
+
+                                |Frontend (Next.js UI)|
+                                :Mở lại thanh toán mô phỏng;
+                            else (Không)
+                                :Rollback transaction;
+                                |Frontend (Next.js UI)|
+                                :Thông báo không thể thanh toán lại;
+                                stop
+                            endif
+                        else (Không)
+                            |Frontend (Next.js UI)|
+                            :Hiển thị trạng thái cuối của đơn;
+                        endif
+                    endif
+                repeat while (Đã tạo payment mới để thử lại?) is (Có)
+                ->Không;
+                stop
+            else (Không)
+                :Rollback transaction;
+                |Backend (NestJS API)|
+                :Trả lỗi số dư điểm không đủ;
+                |Frontend (Next.js UI)|
+                :Thông báo số dư điểm không đủ;
+                stop
+            endif
+        else (Không)
+            |Frontend (Next.js UI)|
+            :Thông báo số điểm đổi không hợp lệ;
+            stop
+        endif
+    else (Không)
+        |Frontend (Next.js UI)|
+        :Thông báo sản phẩm không tồn tại,\nkhông bán hoặc đã hết hàng;
+        stop
+    endif
+else (Không)
+    :Yêu cầu bổ sung thông tin hợp lệ;
+    stop
+endif
+@enduml

@@ -1,0 +1,97 @@
+@startuml Sequence05OrderTracking
+title Sequence 05 - Xem lịch sử, theo dõi và xử lý đơn hàng cá nhân
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Khách hàng" as C
+participant "Frontend\nNext.js UI" as UI
+participant "Backend\nNestJS API" as API
+participant "PaymentsService\n(Mock, nội bộ NestJS)" as PAY
+database "Database\nPostgreSQL" as DB
+
+== Tải lịch sử đơn ==
+
+C -> UI: Mở lịch sử đơn hàng
+alt Khách đã đăng nhập
+    UI -> API: GET /orders/mine\nAuthorization: Bearer JWT
+    activate API
+    API -> DB: Xác thực tài khoản và tìm đơn theo userId
+else Khách vãng lai
+    UI -> UI: Đọc guestAccessToken đã lưu
+    UI -> API: POST /orders/guest/history\n(accessTokens)
+    activate API
+    API -> API: Băm access token để tra cứu
+    API -> DB: Tìm đơn khách chưa bị ẩn
+end
+DB --> API: Danh sách đơn và trạng thái
+API --> UI: 200 OK - Lịch sử đơn hàng
+deactivate API
+UI --> C: Hiển thị mã đơn, tổng tiền và trạng thái
+
+== Theo dõi trạng thái ==
+
+opt Lịch sử đang mở hoặc đơn đang được theo dõi
+    loop Mỗi 5 giây
+        UI -> API: Gọi lại GET /orders/mine\nhoặc POST /orders/guest/history
+        activate API
+        API -> DB: Đọc trạng thái mới nhất\ncủa đơn chưa bị ẩn
+        DB --> API: Trạng thái đơn
+        API --> UI: 200 OK - Trạng thái mới nhất
+        deactivate API
+        UI --> C: Cập nhật trạng thái trên giao diện
+    end
+end
+
+== Khách hủy đơn ==
+
+opt Đơn đang PENDING hoặc CONFIRMED
+    C -> UI: Xác nhận hủy đơn
+    UI -> API: POST /orders/{orderId}/cancel\n(accessTokens; JWT nếu đăng nhập)
+    activate API
+    API -> DB: BEGIN TRANSACTION
+    API -> DB: Kiểm tra quyền và trạng thái đơn
+    alt Đơn được phép hủy
+        API -> PAY: Hủy Payment PENDING
+        PAY -> DB: Cập nhật giao dịch và hoàn điểm\nđã đổi nếu có
+        API -> DB: Chuyển Order sang CANCELLED\nvà hoàn tồn kho
+        API -> DB: COMMIT
+        API --> UI: 200 OK - Đơn đã hủy
+        UI --> C: Hiển thị trạng thái CANCELLED
+    else Đơn không tồn tại hoặc không thể hủy
+        API -> DB: ROLLBACK
+        API --> UI: 404 Not Found hoặc 409 Conflict
+        UI --> C: Thông báo không thể hủy đơn
+    end
+    deactivate API
+end
+
+== Thanh toán lại ==
+
+opt Đơn PAYMENT_FAILED hoặc bị hủy do giao dịch mock
+    C -> UI: Chọn thanh toán lại
+    UI -> API: POST /orders/{orderId}/payments/retry\n(paymentMethod, guestAccessToken nếu khách)
+    activate API
+    API -> PAY: retryMockPayment(orderId, access)
+    PAY -> DB: Kiểm tra quyền, trạng thái và tồn kho
+    alt Đủ điều kiện và còn hàng
+        PAY -> DB: Tạo Payment PENDING mới;\nđặt lại Order=PENDING
+        PAY --> API: Đơn chờ thanh toán
+        API --> UI: 200 OK - Payment mới
+        UI --> C: Mở thanh toán mô phỏng
+    else Không đủ điều kiện hoặc thiếu hàng
+        PAY --> API: Lỗi điều kiện hoặc tồn kho
+        API --> UI: 409/422 - Không thể thanh toán lại
+        UI --> C: Hiển thị thông báo lỗi
+    end
+    deactivate API
+end
+
+@enduml

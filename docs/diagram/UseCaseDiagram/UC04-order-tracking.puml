@@ -1,0 +1,29 @@
+@startuml
+left to right direction
+title USE CASE 04 - TRA CỨU VÀ THEO DÕI ĐƠN HÀNG
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Khách hàng\n(đã đăng nhập hoặc khách)" as Customer
+
+rectangle "Hệ thống BrewLite\n- Tra cứu và xử lý đơn cá nhân -" {
+    usecase "Xem lịch sử đơn hàng" as History
+    usecase "Theo dõi trạng thái đơn" as Tracking
+    usecase "Hủy đơn hàng\n(khi đơn còn cho phép)" as CancelOrder
+    usecase "Thanh toán lại\n(khi giao dịch thất bại/hủy)" as RetryPayment
+    usecase "Xem điểm thưởng\n(khách hàng đăng nhập)" as Loyalty
+}
+
+Customer -- History
+Customer -- Tracking
+Customer -- CancelOrder
+Customer -- RetryPayment
+Customer -- Loyalty
+@enduml

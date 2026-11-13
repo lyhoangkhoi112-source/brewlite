@@ -1,0 +1,31 @@
+@startuml
+left to right direction
+title USE CASE 06 - QUẢN LÝ SẢN PHẨM VÀ THEO DÕI CỬA HÀNG
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Quản lý cửa hàng" as Manager
+
+rectangle "Hệ thống BrewLite\n- Quản trị cửa hàng -" {
+    usecase "Xem danh sách sản phẩm" as ViewProducts
+    usecase "Thêm sản phẩm" as CreateProduct
+    usecase "Cập nhật sản phẩm\nvà tồn kho" as UpdateProduct
+    usecase "Ẩn sản phẩm khỏi thực đơn" as HideProduct
+    usecase "Xem báo cáo doanh thu" as ViewRevenue
+    usecase "Theo dõi tồn kho\nvà sản phẩm sắp hết" as ViewInventory
+}
+
+Manager -- ViewProducts
+Manager -- CreateProduct
+Manager -- UpdateProduct
+Manager -- HideProduct
+Manager -- ViewRevenue
+Manager -- ViewInventory
+@enduml

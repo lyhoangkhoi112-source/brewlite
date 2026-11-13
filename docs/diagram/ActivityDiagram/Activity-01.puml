@@ -1,0 +1,58 @@
+@startuml UserLogin
+title Activity Diagram - Đăng nhập và xác thực người dùng
+
+skinparam defaultTextAlignment center
+
+|Khách hàng / Nhân viên / Quản lý|
+start
+:Mở trang đăng nhập;
+:Nhập email và mật khẩu;
+
+|Next.js UI|
+:Kiểm tra dữ liệu bắt buộc;
+if (Dữ liệu hợp lệ?) then (Có)
+    :Gửi yêu cầu đăng nhập;
+
+    |NestJS API|
+    :Tìm tài khoản và kiểm tra trạng thái;
+    if (Tài khoản đang hoạt động?) then (Có)
+        if (Tài khoản đang bị khóa tạm thời?) then (Có)
+            |Next.js UI|
+            :Thông báo tài khoản đang bị khóa;
+            stop
+        else (Không)
+            |NestJS API|
+            :Đối chiếu mật khẩu;
+            if (Mật khẩu chính xác?) then (Có)
+                :Xóa bộ đếm đăng nhập sai;
+                :Tạo JWT chứa ID và vai trò;
+                |Next.js UI|
+                if (Vai trò phù hợp với trang đăng nhập?) then (Có)
+                    :Lưu phiên đăng nhập;
+                    :Mở giao diện theo vai trò;
+                    stop
+                else (Không)
+                    :Từ chối đăng nhập vào giao diện này;
+                    stop
+                endif
+            else (Không)
+                |NestJS API|
+                :Tăng số lần đăng nhập sai;
+                if (Đạt ngưỡng khóa?) then (Có)
+                    :Khóa tạm thời hoặc khóa tài khoản;
+                endif
+                |Next.js UI|
+                :Thông báo đăng nhập không thành công;
+                stop
+            endif
+        endif
+    else (Không)
+        |Next.js UI|
+        :Thông báo tài khoản không hợp lệ\nhoặc không hoạt động;
+        stop
+    endif
+else (Không)
+    :Hiển thị lỗi dữ liệu đầu vào;
+    stop
+endif
+@enduml

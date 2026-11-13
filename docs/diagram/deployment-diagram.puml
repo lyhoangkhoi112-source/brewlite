@@ -1,129 +1,102 @@
-@startuml BrewLite_Deployment_Diagram
+@startuml BrewLiteDeployment
 !theme plain
-skinparam componentStyle uml2
+title UML Deployment Diagram - BrewLite Production
+
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
 skinparam linetype ortho
 skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam componentStyle uml2
+
 skinparam node {
-    BorderColor #2b2b2b
-    BackgroundColor #fcfcfc
+    BorderColor #245A81
+    BackgroundColor #F4F8FC
 }
 
-title UML Deployment Diagram - BrewLite System (Vercel + Render Production Architecture)
+skinparam cloud {
+    BorderColor #4B6580
+    BackgroundColor #F7FAFC
+}
 
-' ===================================================
-' 1. MÔI TRƯỜNG PHÁT TRIỂN CỤC BỘ (LOCAL ENVIRONMENT)
-' ===================================================
-node "<<device>> Developer Workstation" as LocalDev {
-    artifact "Monorepo Source Code\n(apps/web, apps/api, docs)" as LocalCode
-    artifact "Local Config (.env)" as LocalEnv
-    
-    node "<<container environment>> Docker Desktop" {
-        node "<<container>> brewlite-web (Next.js :3000)" as LocalWeb
-        node "<<container>> brewlite-api (NestJS :3001)" as LocalApi
-        node "<<container>> postgres:15-alpine" as LocalDBNode {
-            database "Local PostgreSQL DB (:5432)" as LocalDB
+skinparam database {
+    BorderColor #26734D
+    BackgroundColor #ECF7EF
+}
+
+node "<<device>> Thiết bị người dùng" as ClientDevice {
+    node "<<browser>> Trình duyệt / PWA" as Browser {
+        component "BrewLite Web UI\nNext.js / React / Zustand" as WebUI
+    }
+}
+
+package "PRODUCTION ENVIRONMENT" as Production {
+    node "<<CDN / PaaS>> Vercel" as Vercel {
+        component "Next.js Application\n(apps/web)" as NextApp
+        artifact "Build Environment\nNEXT_PUBLIC_API_URL\n(public Render API URL)" as VercelEnv
+    }
+
+    node "<<PaaS / web service>> Render" as Render {
+        component "NestJS REST API\n(apps/api)\nGET /health: Prisma DB ping" as NestAPI
+        component "PaymentsService\n(mock, internal)" as MockPayments
+        artifact "Runtime Environment / Secrets\nDATABASE_URL (Neon URL)\nJWT_SECRET / NODE_ENV\nMOCK_PAYMENTS_ENABLED / PORT" as RenderEnv
+        artifact "Application logs\nstdout / stderr -> Render Logs" as ApiLogs
+    }
+
+    node "<<DBaaS>> Neon" as Neon {
+        database "Managed PostgreSQL\nBrewLite" as NeonDB
+        storage "<<persistent storage>>\nDatabase data and backups" as NeonStorage
+    }
+
+    NextApp -[hidden]right- NestAPI
+    NestAPI -[hidden]right- NeonDB
+}
+
+package "CI ENVIRONMENT" as CIEnvironment {
+    cloud "GitHub" as GitHub {
+        folder "BrewLite Repository" as Repository {
+            artifact "Source Code\napps/web / apps/api" as SourceCode
+        }
+        node "<<CI>> GitHub Actions" as GitHubActions {
+            component "Backend CI\nLint / Tests / Build" as BackendCI
+        }
+        node "<<container registry>> GHCR" as GHCR {
+            artifact "API Container Image\nbrewlite-api:<commit-sha>" as RegistryImage
         }
     }
-    LocalCode ..> LocalWeb : bind mount
-    LocalCode ..> LocalApi : bind mount
-    LocalWeb --> LocalApi : HTTP / REST (Port 3001)
-    LocalApi --> LocalDB : TCP (Port 5432)
 }
 
-' ===================================================
-' 2. MÔI TRƯỜNG CI/CD (GITHUB CLOUD)
-' ===================================================
-cloud "<<cloud>> GitHub Services" as GitHubCloud {
-    folder "Repository: brewlite" as GHRepo {
-        artifact "Git Commits & PRs" as GHCommits
-    }
-    
-    node "<<runner>> GitHub Actions CI Pipeline" as GHActions {
-        component "Job 1: Lint & Code Style" as CILint
-        component "Job 2: Unit & Integration Tests" as CITest
-        component "Job 3: Build Verification" as CIBuild
-        component "Job 4: Smoke Test (Health Check)" as CISmoke
-    }
-    
-    node "<<registry>> GitHub Container Registry (GHCR)" as ContainerRegistry {
-        artifact "Docker Image\n(brewlite-api:latest / SHA)" as APIImage
+package "LOCAL DEVELOPMENT ENVIRONMENT" as LocalEnvironment {
+    node "<<device>> Developer Workstation" as DeveloperWorkstation {
+        artifact "Monorepo and local .env" as LocalSource
+        component "Next.js Web\nlocalhost:3001" as LocalWeb
+        component "NestJS API\nlocalhost:3000" as LocalApi
+        database "Local PostgreSQL\nlocalhost:5432" as LocalDB
     }
 }
 
-' ===================================================
-' 3. THIẾT BỊ NGƯỜI DÙNG (CLIENT ENVIRONMENT)
-' ===================================================
-node "<<device>> Client Mobile / Tablet" as ClientDevice {
-    node "<<browser>> Web Browser" as Browser {
-        component "<<PWA>> BrewLite Mobile UI\n(HTML5 / CSS3 / React / Zustand)" as ClientPWA
-    }
-}
+WebUI --> NextApp : HTTPS :443
+WebUI --> NestAPI : HTTPS / REST :443
+NestAPI --> MockPayments : Internal call
+NestAPI -down-> NeonDB : PostgreSQL TLS :5432
+NeonDB --> NeonStorage : Data
 
-' ===================================================
-' 4. MÔI TRƯỜNG PRODUCTION THỰC TẾ (PRODUCTION CLOUD)
-' ===================================================
+SourceCode --> BackendCI : Push / PR
+BackendCI ..> RegistryImage : Build / push
+LocalWeb --> LocalApi : HTTP :3000
+LocalApi --> LocalDB : PostgreSQL :5432
 
-' --- NỀN TẢNG VERCEL CHO FRONTEND ---
-cloud "<<PaaS>> Vercel Edge Network" as VercelPlatform {
-    node "<<edge service>> Vercel Deployment" as VercelNode {
-        component "Next.js Static Assets & SSR Engine\n(apps/web)" as ProdNextJS
-        artifact "Vercel Environment Variables\n(NEXT_PUBLIC_API_URL)" as VercelEnv
-    }
-}
-
-' --- NỀN TẢNG RENDER CHO BACKEND & DATABASE ---
-cloud "<<PaaS>> Render Cloud Platform" as RenderPlatform {
-
-    ' Khối Web Service chạy Backend
-    node "<<container>> Render Web Service (Docker)" as RenderBackendNode {
-        component "NestJS REST API (apps/api)" as ProdNestJS
-        component "Health Check Endpoint\n(GET /health)" as HealthCheck
-        
-        artifact "Render Environment Secrets" as RenderSecrets {
-            file "DATABASE_URL (Internal)"
-            file "JWT_SECRET"
-            file "PORT = 3000"
-            file "NODE_ENV = production"
-        }
-    }
-
-    ' Khối Database nội bộ của Render
-    node "<<managed service>> Render PostgreSQL" as RenderDBNode {
-        database "brewlite_production_db" as ProdDB
-        storage "<<persistent storage>>\nRender Data Disk Volume (Persistent)" as ProdVolume
-    }
-}
-
-' ===================================================
-' DỊCH VỤ BÊN NGOÀI (EXTERNAL SERVICES)
-' ===================================================
-cloud "<<external service>> Mock Payment Gateway" as MockPayment {
-    component "Simulated Payment Service\n(E-Wallet / Bank Gateway)" as MockService
-}
-
-' ===================================================
-' ĐƯỜNG DÂY VÀ GIAO THỨC KẾT NỐI (PROTOCOLS & FLOWS)
-' ===================================================
-
-' 1. Luồng đẩy mã nguồn và kích hoạt CI/CD
-LocalCode --> GHCommits : git push
-GHCommits --> GHActions : Trigger PR / Push
-CIBuild --> ContainerRegistry : Push Docker Image (Optional)
-GHActions --> RenderBackendNode : Trigger Deploy Webhook / Deploy Hook
-
-' 2. Luồng Client truy cập ứng dụng
-ClientPWA --> ProdNextJS : HTTPS (Port 443)\nFetch HTML / JS / PWA Manifest
-ClientPWA --> ProdNestJS : HTTPS / REST API (Port 443)\nJSON Requests + JWT Header
-
-' 3. Luồng nội bộ Render Cloud
-RenderSecrets ..> ProdNestJS : Injected at Runtime
-ProdDB --> ProdVolume : Mounts persistent storage
-ProdNestJS --> ProdDB : PostgreSQL Wire Protocol\n(Port 5432 - Render Private Network)
-
-' 4. Kết nối dịch vụ ngoài
-ProdNestJS --> MockService : HTTPS / REST (Port 443)\nProcess simulated payment
-
-' 5. Kiểm tra Health Check tự động
-CISmoke --> HealthCheck : HTTPS GET /health\n(Post-Deploy Smoke Test)
+legend bottom
+  Production platforms: Vercel (Next.js), Render (NestJS API), Neon (PostgreSQL).
+  Vercel sets NEXT_PUBLIC_API_URL; Render holds backend secrets and DATABASE_URL.
+  Render checks GET /health; the API health check pings Neon through Prisma.
+  GHCR stores the API image for the target Render deployment; neither step is configured.
+  Existing GitHub Actions runs backend lint, tests and build only.
+  Local, CI and Production are separate environments.
+endlegend
 
 @enduml

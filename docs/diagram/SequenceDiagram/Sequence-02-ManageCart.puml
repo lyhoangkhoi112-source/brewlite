@@ -1,0 +1,62 @@
+@startuml Sequence02ManageCart
+title Sequence 02 - Tùy chỉnh sản phẩm và quản lý giỏ hàng
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Khách hàng" as C
+participant "Frontend\nNext.js UI" as UI
+participant "Cart Store\nZustand" as Store
+database "Browser\nlocalStorage" as Storage
+
+note over UI,Storage
+Giỏ hàng chưa được lưu ở API/Database.
+Zustand persist lưu giỏ hàng trên trình duyệt.
+end note
+
+== Khôi phục giỏ hàng ==
+
+UI -> Store: Khởi tạo cart store
+Store -> Storage: Đọc khóa brewlite-cart
+Storage --> Store: Giỏ hàng đã lưu (nếu có)
+Store --> UI: Danh sách mặt hàng
+UI --> C: Hiển thị giỏ hàng và tổng tiền
+
+== Thêm sản phẩm ==
+
+C -> UI: Chọn kích cỡ, đường, đá,\ntopping và số lượng
+UI -> Store: addItem(cấu hình sản phẩm)
+Store -> Store: Gộp mặt hàng cùng cấu hình\nhoặc thêm mặt hàng mới
+Store -> Storage: Lưu trạng thái giỏ hàng
+Store --> UI: Giỏ hàng mới
+UI --> C: Cập nhật số lượng và tổng tiền
+
+== Thay đổi giỏ hàng ==
+
+alt Thay đổi tùy chọn
+    C -> UI: Chỉnh kích cỡ, đường hoặc đá
+    UI -> Store: updateOptions(itemId, tùy chọn)
+    Store -> Store: Cập nhật cấu hình và gộp\nmặt hàng trùng cấu hình nếu cần
+else Thay đổi số lượng
+    C -> UI: Tăng hoặc giảm số lượng
+    UI -> Store: updateQuantity(itemId, quantity)
+    Store -> Store: Cập nhật số lượng;\nxóa mặt hàng nếu quantity < 1
+else Xóa mặt hàng
+    C -> UI: Chọn xóa mặt hàng
+    UI -> Store: removeItem(itemId)
+    Store -> Store: Loại mặt hàng khỏi giỏ
+end
+
+Store -> Storage: Lưu trạng thái giỏ hàng
+Store --> UI: Giỏ hàng đã cập nhật
+UI -> UI: Tính lại tổng tiền trên giao diện
+UI --> C: Hiển thị giỏ hàng mới
+
+@enduml

@@ -1,0 +1,42 @@
+@startuml CustomerRegistration
+title Activity Diagram - Đăng ký tài khoản khách hàng
+
+skinparam defaultTextAlignment center
+
+|Khách hàng|
+start
+:Mở trang đăng ký;
+:Nhập họ tên, email,\nmật khẩu và số điện thoại tùy chọn;
+
+|Next.js UI|
+:Kiểm tra dữ liệu biểu mẫu;
+if (Dữ liệu hợp lệ?) then (Có)
+    :Gửi yêu cầu đăng ký;
+
+    |NestJS API|
+    :Chuẩn hóa email và thông tin;
+    :Băm mật khẩu;
+    :Mở transaction và cấp mã KH########;
+    |Cơ sở dữ liệu|
+    :Tạo tài khoản với email duy nhất;
+    if (Email chưa được đăng ký?) then (Có)
+        :Lưu tài khoản khách hàng;
+        :Commit transaction;
+        |NestJS API|
+        :Trả thông tin tài khoản đã tạo;
+        |Next.js UI|
+        :Thông báo đăng ký thành công;
+        stop
+    else (Không)
+        :Rollback do email bị trùng;
+        |NestJS API|
+        :Chuyển lỗi email trùng thành thông báo phù hợp;
+        |Next.js UI|
+        :Thông báo email đã được đăng ký;
+        stop
+    endif
+else (Không)
+    :Hiển thị lỗi dữ liệu đăng ký;
+    stop
+endif
+@enduml

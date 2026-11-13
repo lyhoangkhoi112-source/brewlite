@@ -1,0 +1,92 @@
+@startuml
+left to right direction
+title USE CASE TỔNG QUÁT - HỆ THỐNG BREWLITE
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Khách hàng" as Customer
+actor "Khách vãng lai" as Guest
+actor "Nhân viên quầy" as Staff
+actor "Quản lý cửa hàng" as Manager
+
+rectangle "Hệ thống BrewLite" {
+    package "Tài khoản và xác thực" {
+        usecase "Đăng ký tài khoản" as Register
+        usecase "Đăng nhập" as Login
+        usecase "Đổi mật khẩu" as ChangePassword
+        usecase "Quản lý tài khoản\nkhách hàng và nhân viên" as ManageUsers
+    }
+
+    package "Khám phá sản phẩm và đặt hàng" {
+        usecase "Xem thực đơn và\nchi tiết sản phẩm" as BrowseMenu
+        usecase "Tùy chọn sản phẩm" as Customize
+        usecase "Quản lý giỏ hàng" as ManageCart
+        usecase "Đặt đơn hàng" as PlaceOrder
+        usecase "Kiểm tra sản phẩm,\ntùy chọn và tồn kho" as ValidateOrder
+        usecase "Xem xác nhận đơn hàng" as ConfirmOrder
+        usecase "Thanh toán mô phỏng" as MockPayment
+        usecase "Đổi điểm thưởng" as RedeemPoints
+    }
+
+    package "Tra cứu và xử lý đơn hàng" {
+        usecase "Xem lịch sử và trạng thái đơn" as TrackOrder
+        usecase "Hủy đơn hàng" as CancelOrder
+        usecase "Thanh toán lại" as RetryPayment
+        usecase "Xem điểm thưởng" as ViewLoyalty
+        usecase "Xem, tìm đơn tại quầy" as ViewStaffOrders
+        usecase "Cập nhật trạng thái,\ntừ chối hoặc hủy đơn" as ProcessOrders
+        usecase "Ẩn đơn khỏi danh sách" as HideOrder
+    }
+
+    package "Quản trị cửa hàng" {
+        usecase "Quản lý sản phẩm\nvà tồn kho" as ManageProducts
+        usecase "Xem báo cáo doanh thu\nvà tồn kho" as ViewReports
+    }
+}
+
+Customer -- Register
+Customer -- Login
+Customer -- ChangePassword
+Customer -- BrowseMenu
+Customer -- Customize
+Customer -- ManageCart
+Customer -- PlaceOrder
+Customer -- MockPayment
+Customer -- RedeemPoints
+Customer -- TrackOrder
+Customer -- CancelOrder
+Customer -- RetryPayment
+Customer -- ViewLoyalty
+
+Guest -- BrowseMenu
+Guest -- Customize
+Guest -- ManageCart
+Guest -- PlaceOrder
+Guest -- MockPayment
+Guest -- TrackOrder
+Guest -- CancelOrder
+Guest -- RetryPayment
+
+Staff -- Login
+Staff -- ViewStaffOrders
+Staff -- ProcessOrders
+Staff -- HideOrder
+
+Manager -- Login
+Manager -- ManageUsers
+Manager -- ManageProducts
+Manager -- ViewReports
+
+Customize ..> BrowseMenu : <<extend>>
+PlaceOrder ..> ValidateOrder : <<include>>
+PlaceOrder ..> ConfirmOrder : <<include>>
+MockPayment ..> PlaceOrder : <<extend>>
+RedeemPoints ..> PlaceOrder : <<extend>>
+@enduml

@@ -1,0 +1,134 @@
+@startuml Sequence07ManagerProductsAndInventory
+title Sequence 07 - Quản lý xem doanh thu, tồn kho và sản phẩm
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Quản lý" as Manager
+participant "Frontend\nNext.js Manager UI" as UI
+participant "Backend\nNestJS API" as API
+participant "ProductsManagerGuard" as Guard
+participant "StatisticsService /\nProductsService" as Service
+database "Database\nPostgreSQL" as DB
+
+== Đăng nhập ==
+
+Manager -> UI: Nhập email và mật khẩu
+UI -> API: POST /login\n(email, password)
+API -> DB: Tra tài khoản và kiểm tra trạng thái
+DB --> API: Tài khoản, role, passwordHash
+API -> API: Xác minh mật khẩu;\ntạo JWT
+API --> UI: 200 OK - accessToken và user
+UI -> UI: Kiểm tra user.role = MANAGER
+alt Đúng vai trò quản lý
+    UI -> UI: Lưu phiên vào sessionStorage
+    UI --> Manager: Mở dashboard
+else Sai vai trò hoặc đăng nhập thất bại
+    UI --> Manager: Hiển thị lỗi đăng nhập/quyền truy cập
+end
+
+== Tải tổng quan ==
+
+par Doanh thu theo tháng
+    UI -> API: GET /statistics/monthly-revenue?year={năm}\nAuthorization: Bearer JWT
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard -> DB: Kiểm tra tài khoản ACTIVE, role MANAGER
+    DB --> Guard: Kết quả xác thực
+    Guard --> API: Cho phép
+    API -> Service: getMonthlyRevenue(year)
+    Service -> DB: Tổng Payment SUCCESS theo paidAt\ntrong năm được chọn
+    DB --> Service: Doanh thu theo tháng
+    Service --> API: 12 tháng và tổng doanh thu
+    API --> UI: 200 OK - monthlyRevenue
+else Tồn kho và cảnh báo
+    UI -> API: GET /statistics/inventory\nAuthorization: Bearer JWT
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard -> DB: Kiểm tra tài khoản ACTIVE, role MANAGER
+    DB --> Guard: Kết quả xác thực
+    Guard --> API: Cho phép
+    API -> Service: getInventory()
+    Service -> DB: Tìm sản phẩm không UNAVAILABLE
+    DB --> Service: Sản phẩm và số lượng tồn
+    Service --> API: Tồn kho; cảnh báo dưới 10
+    API --> UI: 200 OK - inventory
+else Danh sách sản phẩm
+    UI -> API: GET /products\nAuthorization: Bearer JWT
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard --> API: Cho phép nếu ACTIVE, MANAGER
+    API -> Service: findAll(filters?)
+    Service -> DB: Truy vấn sản phẩm theo bộ lọc
+    DB --> Service: Danh sách sản phẩm
+    Service --> API: Danh sách sản phẩm
+    API --> UI: 200 OK - products
+end
+
+UI --> Manager: Hiển thị doanh thu, tồn kho,\nsản phẩm và cảnh báo
+
+== Thêm hoặc cập nhật sản phẩm ==
+
+alt Tạo sản phẩm
+    Manager -> UI: Nhập tên, danh mục, giá,\ntồn kho, trạng thái và ảnh
+    UI -> API: POST /products\n(product fields), JWT
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard --> API: Cho phép nếu ACTIVE, MANAGER
+    API -> Service: create(input)
+    Service -> Service: Chuẩn hóa dữ liệu;\nkiểm tra tên trùng
+    Service -> DB: Tìm sản phẩm đang hoạt động\ntrùng tên không phân biệt hoa thường
+    alt Tên hợp lệ
+        Service -> DB: INSERT Product
+        DB --> Service: Sản phẩm mới
+        Service --> API: Product
+        API --> UI: 201 Created
+        UI --> Manager: Báo thêm sản phẩm thành công
+    else Tên rỗng hoặc bị trùng
+        Service --> API: 400 Bad Request hoặc 409 Conflict
+        API --> UI: Lỗi dữ liệu sản phẩm
+        UI --> Manager: Hiển thị lỗi
+    end
+else Cập nhật sản phẩm
+    Manager -> UI: Sửa thông tin sản phẩm
+    UI -> API: PATCH /products/{id}\n(chỉ trường thay đổi), JWT
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard --> API: Cho phép nếu ACTIVE, MANAGER
+    API -> Service: update(id, input)
+    Service -> DB: Tìm sản phẩm;\nkiểm tra tên hợp lệ nếu cần
+    alt Sản phẩm tồn tại và dữ liệu hợp lệ
+        Service -> DB: UPDATE Product
+        DB --> Service: Sản phẩm đã cập nhật
+        Service --> API: Product
+        API --> UI: 200 OK
+        UI --> Manager: Báo cập nhật thành công
+    else Không tồn tại hoặc tên trùng
+        Service --> API: 404 Not Found hoặc 409 Conflict
+        API --> UI: Lỗi cập nhật
+        UI --> Manager: Hiển thị lỗi
+    end
+end
+
+== Ẩn sản phẩm ==
+
+Manager -> UI: Chọn ngừng bán sản phẩm
+UI -> API: DELETE /products/{id}\nAuthorization: Bearer JWT
+API -> Guard: Xác minh JWT và quyền quản lý
+Guard --> API: Cho phép nếu ACTIVE, MANAGER
+API -> Service: softDelete(id)
+Service -> DB: Cập nhật status = UNAVAILABLE
+DB --> Service: Product đã cập nhật
+Service --> API: Product
+API --> UI: 200 OK
+UI --> Manager: Tải lại dashboard và danh sách sản phẩm
+
+note over UI,Service
+Frontend gọi GET /statistics/monthly-revenue,
+GET /statistics/inventory, GET /products và GET /users
+để tải dashboard. Doanh thu tính từ Payment SUCCESS.
+end note
+
+@enduml
