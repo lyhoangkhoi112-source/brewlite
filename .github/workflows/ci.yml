@@ -208,7 +208,7 @@ jobs:
           npx --yes vercel@latest --token="$VERCEL_TOKEN" curl "$deployment_url" \
             --fail --silent --show-error \
             --retry 12 --retry-all-errors --retry-delay 5 --max-time 15
-          npx --yes vercel@latest --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" \
+          npx --yes vercel@latest --token="$VERCEL_TOKEN" --scope="ly-hoang-khoi" \
             promote "$deployment_url" --yes
           npx --yes vercel@latest --token="$VERCEL_TOKEN" curl "${VERCEL_PRODUCTION_URL%/}" \
             --fail --silent --show-error \
