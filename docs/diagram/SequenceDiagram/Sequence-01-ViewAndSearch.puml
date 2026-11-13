@@ -1,0 +1,46 @@
+@startuml Sequence01ViewAndSearch
+title Sequence 01 - Xem thực đơn, tìm và chọn sản phẩm
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Khách hàng" as C
+participant "Frontend\nNext.js UI" as UI
+participant "Backend\nNestJS API" as API
+database "Database\nPostgreSQL" as DB
+
+== Tải thực đơn ==
+
+C -> UI: Mở trang thực đơn
+UI -> API: GET /menu/all
+activate API
+API -> DB: Tìm sản phẩm chưa bị ẩn\n(status != UNAVAILABLE)
+DB --> API: Danh sách sản phẩm
+API --> UI: 200 OK - Danh sách thực đơn
+deactivate API
+UI --> C: Hiển thị thực đơn
+
+== Tìm và lọc sản phẩm ==
+
+C -> UI: Nhập từ khóa hoặc chọn danh mục
+UI -> UI: Lọc danh sách đã tải ở giao diện
+alt Có sản phẩm phù hợp
+    UI --> C: Hiển thị kết quả lọc
+else Không có sản phẩm phù hợp
+    UI --> C: Hiển thị danh sách trống
+end
+
+== Chọn sản phẩm ==
+
+C -> UI: Chọn sản phẩm
+UI -> UI: Đọc chi tiết từ dữ liệu thực đơn đã tải
+UI --> C: Hiển thị giá, mô tả,\ntrạng thái và tùy chọn sản phẩm
+
+@enduml

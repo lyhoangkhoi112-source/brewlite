@@ -1,0 +1,120 @@
+@startuml Sequence04MockPayment
+title Sequence 04 - Thanh toán mô phỏng và cập nhật đơn hàng
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Khách hàng" as C
+participant "Frontend\nNext.js UI" as UI
+participant "Backend\nNestJS API" as API
+participant "PaymentsService\n(Mock, nội bộ NestJS)" as PAY
+database "Database\nPostgreSQL" as DB
+
+note over PAY
+Đây là service mô phỏng trong NestJS,
+không gọi MoMo/VNPay hay cổng thanh toán bên ngoài.
+idempotencyKey được tạo duy nhất cho mỗi Payment.
+end note
+
+== Mở trang thanh toán ==
+
+UI -> API: GET /orders/mock-payments/{paymentId}
+activate API
+API -> PAY: getMockPaymentDetails(paymentId)
+activate PAY
+PAY -> DB: Tìm Payment và Order
+DB --> PAY: Số tiền, phương thức,\ntrạng thái giao dịch và đơn
+PAY --> API: Thông tin thanh toán giới hạn
+deactivate PAY
+API --> UI: 200 OK - Thông tin thanh toán
+deactivate API
+UI --> C: Hiển thị mã đơn, số tiền,\nphương thức và lựa chọn mô phỏng
+
+== Gửi kết quả mô phỏng ==
+
+C -> UI: Chọn SUCCESS, FAILED hoặc CANCELLED
+UI -> API: POST /orders/mock-payments/{paymentId}\n(outcome, paymentMethod)
+activate API
+API -> PAY: simulateMockPaymentFromLink(paymentId, outcome)
+activate PAY
+PAY -> DB: Tìm đơn theo paymentId
+DB --> PAY: orderId
+PAY -> DB: BEGIN TRANSACTION
+PAY -> DB: Kiểm tra Order=PENDING\nvà Payment=PENDING
+
+alt Trạng thái còn chờ và outcome=SUCCESS
+    PAY -> DB: Ghi Payment=SUCCESS, transactionId MOCK-*
+    PAY -> DB: Chuyển Order sang CONFIRMED
+    opt Tài khoản khách hàng
+        PAY -> DB: Cộng điểm thưởng và ghi lịch sử điểm
+    end
+    PAY -> DB: COMMIT
+    DB --> PAY: Trạng thái đã cập nhật
+    PAY --> API: Order CONFIRMED
+    API --> UI: 200 OK - Kết quả thanh toán
+    UI --> C: Hiển thị thanh toán thành công
+else Trạng thái còn chờ và outcome=FAILED
+    PAY -> DB: Ghi Payment=FAILED
+    PAY -> DB: Chuyển Order sang PAYMENT_FAILED
+    PAY -> DB: Hoàn tồn kho\n(điểm đã đổi vẫn giữ để thử lại)
+    PAY -> DB: COMMIT
+    DB --> PAY: Trạng thái đã cập nhật
+    PAY --> API: Order PAYMENT_FAILED
+    API --> UI: 200 OK - Kết quả thanh toán
+    UI --> C: Hiển thị giao dịch thất bại\nvà tùy chọn thanh toán lại
+else Trạng thái còn chờ và outcome=CANCELLED
+    PAY -> DB: Ghi Payment=CANCELLED
+    PAY -> DB: Chuyển Order sang CANCELLED
+    PAY -> DB: Hoàn tồn kho và điểm đã đổi
+    PAY -> DB: COMMIT
+    DB --> PAY: Trạng thái đã cập nhật
+    PAY --> API: Order CANCELLED
+    API --> UI: 200 OK - Kết quả thanh toán
+    UI --> C: Hiển thị giao dịch đã hủy
+else Giao dịch hoặc đơn đã được xử lý
+    PAY -> DB: Conditional update theo trạng thái PENDING
+    DB --> PAY: Không có bản ghi được cập nhật
+    PAY --> API: Conflict - Giao dịch đã được xử lý
+    API --> UI: 409 Conflict
+    UI --> C: Hiển thị trạng thái đã xử lý\nvà tải lại trạng thái đơn
+end
+
+deactivate PAY
+deactivate API
+
+== Thử thanh toán lại ==
+
+opt Đơn PAYMENT_FAILED hoặc giao dịch mock bị hủy
+    C -> UI: Chọn thanh toán lại
+    UI -> API: POST /orders/{orderId}/payments/retry\n(paymentMethod, guestAccessToken nếu khách)
+    activate API
+    API -> PAY: retryMockPayment(orderId, access)
+    activate PAY
+    PAY -> DB: BEGIN TRANSACTION
+    PAY -> DB: Kiểm tra quyền, trạng thái và giao dịch cuối
+    PAY -> DB: Kiểm tra và giữ lại tồn kho
+    alt Đơn đủ điều kiện và còn hàng
+        PAY -> DB: Tạo Payment PENDING mới\nvới idempotencyKey mới
+        PAY -> DB: Chuyển Order sang PENDING
+        PAY -> DB: COMMIT
+        DB --> PAY: Payment mới
+        PAY --> API: Đơn PENDING và Payment mới
+        API --> UI: 200 OK - Đơn chờ thanh toán
+        UI --> C: Mở lại giao dịch thanh toán mô phỏng
+    else Không đủ điều kiện hoặc thiếu hàng
+        PAY --> API: Conflict hoặc lỗi tồn kho
+        API --> UI: 409/422 - Không thể thử lại
+        UI --> C: Hiển thị lý do không thể thanh toán lại
+    end
+    deactivate PAY
+    deactivate API
+end
+
+@enduml

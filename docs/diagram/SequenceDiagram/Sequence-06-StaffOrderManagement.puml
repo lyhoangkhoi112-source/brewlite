@@ -1,0 +1,188 @@
+@startuml Sequence06StaffOrderManagement
+title Sequence 06 - Nhân viên đăng nhập và xử lý đơn hàng
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Nhân viên" as Staff
+participant "Frontend\nNext.js Staff UI" as UI
+participant "Backend\nNestJS API" as API
+participant "StaffOrdersGuard" as Guard
+participant "PaymentsService\n(Mock, nội bộ NestJS)" as PAY
+database "Database\nPostgreSQL" as DB
+
+== Đăng nhập ==
+
+Staff -> UI: Nhập email và mật khẩu
+UI -> API: POST /login\n(email, password)
+API -> DB: Tìm tài khoản và kiểm tra trạng thái
+DB --> API: Tài khoản, role, passwordHash
+API -> API: Xác minh mật khẩu;\ntạo JWT
+API --> UI: 200 OK - accessToken và user
+UI -> UI: Kiểm tra user.role = STAFF
+alt Đúng vai trò nhân viên
+    UI -> UI: Lưu phiên vào sessionStorage
+    UI --> Staff: Mở trang quản lý đơn
+else Sai vai trò hoặc đăng nhập thất bại
+    UI --> Staff: Hiển thị lỗi đăng nhập/quyền truy cập
+end
+
+== Tải và theo dõi đơn ==
+
+UI -> API: GET /orders/staff\nAuthorization: Bearer JWT
+API -> Guard: Xác minh JWT
+Guard -> DB: Tra tài khoản theo JWT subject
+DB --> Guard: Role và trạng thái tài khoản
+alt Tài khoản ACTIVE và role STAFF
+    Guard --> API: Cho phép
+    API -> DB: Tìm tối đa 100 đơn gần nhất\nvới deletedAt = null
+    DB --> API: Đơn, món, khách hàng,\ntrạng thái và payment PENDING
+    API --> UI: 200 OK - Danh sách đơn
+    UI --> Staff: Hiển thị hàng đợi và trạng thái
+else JWT thiếu/sai, hoặc không phải nhân viên ACTIVE
+    Guard --> API: 401 Unauthorized hoặc 403 Forbidden
+    API --> UI: Lỗi xác thực/quyền
+    UI --> Staff: Yêu cầu đăng nhập đúng tài khoản
+end
+
+opt Trang nhân viên đang mở
+    loop Mỗi 5 giây
+        UI -> API: GET /orders/staff
+        API -> Guard: Xác minh lại JWT và vai trò
+        Guard -> DB: Kiểm tra tài khoản ACTIVE, role STAFF
+        DB --> Guard: Kết quả xác thực
+        Guard --> API: Cho phép
+        API -> DB: Tải tối đa 100 đơn chưa ẩn
+        DB --> API: Trạng thái đơn mới nhất
+        API --> UI: 200 OK - Danh sách cập nhật
+        UI --> Staff: Làm mới hàng đợi
+    end
+end
+
+== Tiếp nhận và pha chế ==
+
+alt Nhân viên xác nhận đơn đã thanh toán
+    Staff -> UI: Chọn xác nhận đơn
+    UI -> API: PATCH /orders/{id}/staff-status\n{status: CONFIRMED}, JWT
+    API -> Guard: Xác minh JWT và role STAFF
+    Guard -> DB: Kiểm tra tài khoản
+    DB --> Guard: ACTIVE, STAFF
+    Guard --> API: Cho phép
+    API -> DB: Transaction: kiểm tra đơn PENDING\nvà không còn Payment PENDING
+    alt Hợp lệ
+        API -> DB: Chuyển Order sang CONFIRMED
+        API --> UI: 200 OK - Đơn đã xác nhận
+        UI --> Staff: Cập nhật trạng thái đơn
+    else Còn payment PENDING hoặc trạng thái đã đổi
+        API --> UI: 409 Conflict
+        UI --> Staff: Thông báo chưa thể xác nhận
+    end
+else Bắt đầu pha chế
+    Staff -> UI: Chuyển đơn sang đang pha chế
+    UI -> API: PATCH /orders/{id}/staff-status\n{status: PREPARING}, JWT
+    API -> Guard: Xác minh JWT và role STAFF
+    Guard --> API: Cho phép nếu ACTIVE, STAFF
+    API -> DB: Conditional update CONFIRMED -> PREPARING
+    alt Đơn đang CONFIRMED
+        DB --> API: Đã cập nhật
+        API --> UI: 200 OK - Đơn PREPARING
+        UI --> Staff: Cập nhật trạng thái
+    else Trạng thái không phù hợp
+        DB --> API: Không có bản ghi được cập nhật
+        API --> UI: 409 Conflict
+        UI --> Staff: Thông báo đơn đã được xử lý
+    end
+else Hoàn tất pha chế
+    Staff -> UI: Chuyển đơn sang sẵn sàng
+    UI -> API: PATCH /orders/{id}/staff-status\n{status: READY}, JWT
+    API -> Guard: Xác minh JWT và role STAFF
+    Guard --> API: Cho phép nếu ACTIVE, STAFF
+    API -> DB: Conditional update PREPARING -> READY
+    alt Đơn đang PREPARING
+        DB --> API: Đã cập nhật
+        API --> UI: 200 OK - Đơn READY
+        UI --> Staff: Cập nhật trạng thái
+    else Trạng thái không phù hợp
+        DB --> API: Không có bản ghi được cập nhật
+        API --> UI: 409 Conflict
+        UI --> Staff: Thông báo đơn đã được xử lý
+    end
+end
+
+== Từ chối hoặc hủy đơn ==
+
+alt Từ chối đơn đang chờ xác nhận
+    Staff -> UI: Nhập lý do và từ chối
+    UI -> API: POST /orders/{id}/reject\n{reason}, JWT
+    API -> Guard: Xác minh JWT và role STAFF
+    Guard --> API: Cho phép nếu ACTIVE, STAFF
+    API -> DB: BEGIN; kiểm tra đơn PENDING
+    alt Đơn còn PENDING
+        API -> DB: Chuyển CANCELLED và lưu lý do
+        API -> PAY: Hủy payment PENDING,\nhoàn điểm đổi và tồn kho
+        PAY -> DB: Cập nhật payment/điểm/tồn kho
+        API -> DB: COMMIT
+        API --> UI: 200 OK - Đơn đã từ chối
+        UI --> Staff: Làm mới hàng đợi
+    else Đơn không còn PENDING
+        API --> UI: 409 Conflict
+        UI --> Staff: Thông báo không thể từ chối
+    end
+else Hủy trước khi bắt đầu pha chế
+    Staff -> UI: Nhập lý do tùy chọn và hủy
+    UI -> API: POST /orders/{id}/staff-cancel\n{reason?}, JWT
+    API -> Guard: Xác minh JWT và role STAFF
+    Guard --> API: Cho phép nếu ACTIVE, STAFF
+    API -> DB: BEGIN; kiểm tra đơn PENDING hoặc CONFIRMED
+    alt Đơn chưa bắt đầu pha chế
+        API -> DB: Chuyển CANCELLED và lưu lý do
+        API -> PAY: Hủy payment PENDING,\nhoàn điểm đổi và tồn kho
+        PAY -> DB: Cập nhật payment/điểm/tồn kho
+        API -> DB: COMMIT
+        API --> UI: 200 OK - Đơn đã hủy
+        UI --> Staff: Làm mới hàng đợi
+    else Đơn đã bắt đầu pha chế hoặc đã xử lý
+        API --> UI: 409 Conflict
+        UI --> Staff: Thông báo không thể hủy
+    end
+end
+
+== Tra cứu và ẩn đơn đã kết thúc ==
+
+Staff -> UI: Tìm theo mã HD hoặc ID đơn
+UI -> API: GET /orders/staff/search?orderCode={mã}
+API -> Guard: Xác minh JWT và role STAFF
+Guard --> API: Cho phép nếu ACTIVE, STAFF
+API -> DB: Tìm theo orderCode hoặc id
+alt Tìm thấy đơn
+    DB --> API: Thông tin đơn (kể cả đơn đã ẩn)
+    API --> UI: 200 OK - Chi tiết đơn
+    UI --> Staff: Hiển thị đơn
+    opt Đơn READY, COMPLETED hoặc CANCELLED
+        Staff -> UI: Xác nhận ẩn đơn
+        UI -> API: POST /orders/{id}/staff-soft-delete
+        API -> Guard: Xác minh JWT và role STAFF
+        Guard --> API: Cho phép nếu ACTIVE, STAFF
+        API -> DB: Đặt deletedAt; giữ nguyên dữ liệu đơn
+        alt Trạng thái đủ điều kiện
+            DB --> API: Đã ẩn đơn
+            API --> UI: 200 OK
+            UI --> Staff: Cập nhật kết quả tra cứu và tải lại hàng đợi
+        else Trạng thái không đủ điều kiện
+            API --> UI: 409 Conflict
+            UI --> Staff: Thông báo không thể ẩn đơn
+        end
+    end
+else Không tìm thấy
+    API --> UI: 404 Not Found
+    UI --> Staff: Hiển thị không tìm thấy đơn
+end
+
+@enduml

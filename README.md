@@ -27,3 +27,41 @@ Một task/User Story được coi là hoàn thành (Done) khi:
 3. Đã chạy thử nghiệm thực tế (Backend chạy đúng endpoint, Frontend hiển thị đúng).
 4. Code tuân thủ quy ước đặt tên và đã qua review trong PR.
 5. Code đã được merge vào nhánh chính (`develop`/`main`).
+
+## 5. Chạy local bằng Docker Compose
+
+Cài Docker Desktop, mở Docker engine, sau đó chạy tại thư mục gốc:
+
+```powershell
+docker compose up --build
+```
+
+Compose khởi động PostgreSQL, chờ database sẵn sàng, áp dụng các Prisma
+migrations, seed catalog mẫu theo cách idempotent, rồi chạy API và web.
+
+- Web: http://localhost:3000
+- API: http://localhost:3001
+- PostgreSQL: `localhost:5433` (database `brewlite`; cổng 5432 bên trong Compose)
+
+Dừng các container nhưng giữ nguyên database:
+
+```powershell
+docker compose down
+```
+
+Để tạo lại database local từ đầu, cần xóa volume dữ liệu (thao tác này xóa
+mọi dữ liệu trong database Compose):
+
+```powershell
+docker compose down --volumes
+docker compose up --build
+```
+
+Database Compose dùng thông tin đăng nhập mặc định chỉ dành cho local
+development; không dùng các credentials này ở môi trường chia sẻ hoặc production.
+API seed tạo các sản phẩm mẫu, không tạo tài khoản với mật khẩu mặc định.
+
+## 6. Triển khai production
+
+Hướng dẫn cấu hình GitHub Actions với Neon, Render và Vercel nằm tại
+[docs/deployment.md](./docs/deployment.md).

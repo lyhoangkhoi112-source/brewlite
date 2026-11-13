@@ -1,0 +1,66 @@
+@startuml ProductManagement
+title Activity Diagram - Quản lý sản phẩm
+
+skinparam defaultTextAlignment center
+
+|Quản lý cửa hàng|
+start
+:Mở trang quản lý sản phẩm;
+
+|Next.js UI|
+:Yêu cầu danh sách sản phẩm;
+
+|NestJS API|
+:Xác thực quyền quản lý;
+
+|Cơ sở dữ liệu|
+:Trả danh sách sản phẩm;
+
+|Next.js UI|
+:Hiển thị danh sách sản phẩm;
+|Quản lý cửa hàng|
+if (Thao tác nào?) then (Thêm)
+    :Nhập thông tin và tồn kho ban đầu;
+    |Next.js UI|
+    :Kiểm tra dữ liệu biểu mẫu;
+    |NestJS API|
+    :Kiểm tra dữ liệu và tên sản phẩm trùng;
+    if (Dữ liệu hợp lệ?) then (Có)
+        |Cơ sở dữ liệu|
+        :Tạo sản phẩm;
+        |Next.js UI|
+        :Thông báo thêm sản phẩm thành công;
+    else (Không)
+        |Next.js UI|
+        :Hiển thị lỗi dữ liệu hoặc tên trùng;
+    endif
+elseif (Cập nhật)
+    |Quản lý cửa hàng|
+    :Chọn sản phẩm và chỉnh sửa thông tin\nhoặc số lượng tồn kho;
+    |Next.js UI|
+    :Gửi thông tin cập nhật;
+    |NestJS API|
+    :Kiểm tra dữ liệu và tên sản phẩm trùng;
+    if (Dữ liệu hợp lệ?) then (Có)
+        |Cơ sở dữ liệu|
+        :Cập nhật sản phẩm;
+        |Next.js UI|
+        :Thông báo cập nhật thành công;
+    else (Không)
+        |Next.js UI|
+        :Hiển thị lỗi cập nhật;
+    endif
+else (Ẩn)
+    |Quản lý cửa hàng|
+    :Chọn sản phẩm cần ẩn;
+    |Next.js UI|
+    :Gửi yêu cầu ẩn sản phẩm;
+    |NestJS API|
+    :Đặt trạng thái sản phẩm thành UNAVAILABLE;
+    |Cơ sở dữ liệu|
+    :Lưu trạng thái sản phẩm;
+    |Next.js UI|
+    :Thông báo đã ẩn khỏi thực đơn;
+endif
+stop
+@enduml
