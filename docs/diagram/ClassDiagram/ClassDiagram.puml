@@ -1,4 +1,5 @@
-@startuml Class Diagram - Mô hình lớp nghiệp vụ BrewLite
+@startuml BrewLiteClassDiagram
+title Class Diagram - Mô hình dữ liệu BrewLite
 
 left to right direction
 skinparam backgroundColor white
@@ -8,6 +9,8 @@ skinparam classAttributeIconSize 0
 skinparam packageStyle rectangle
 skinparam defaultFontName Arial
 skinparam defaultFontSize 12
+skinparam nodesep 45
+skinparam ranksep 55
 
 skinparam class {
     BackgroundColor #EAF3FF
@@ -24,12 +27,7 @@ skinparam enum {
 
 hide empty members
 
-'========================================
-' ENUM - CAC TRANG THAI
-'========================================
-
-package "Enumerations - Các kiểu liệt kê" {
-
+package "Trạng thái và vai trò" {
     enum UserRole {
         CUSTOMER
         STAFF
@@ -40,6 +38,17 @@ package "Enumerations - Các kiểu liệt kê" {
         ACTIVE
         INACTIVE
         BLOCKED
+    }
+
+    enum ProductCategory {
+        COFFEE
+        MILK_TEA
+        FRUIT_TEA
+        MATCHA
+        ICE_BLEND
+        MACCHIATO
+        PASTRIES
+        TOPPING
     }
 
     enum ProductStatus {
@@ -60,9 +69,11 @@ package "Enumerations - Các kiểu liệt kê" {
     }
 
     enum PaymentMethod {
+        CASH
         MOMO
         VNPAY
-        ZALOPAY
+        CREDIT_CARD
+        SHOPEEPAY
     }
 
     enum PaymentStatus {
@@ -71,11 +82,7 @@ package "Enumerations - Các kiểu liệt kê" {
         SUCCESS
         FAILED
         REFUNDED
-    }
-
-    enum PromotionType {
-        PERCENTAGE
-        FIXED_AMOUNT
+        CANCELLED
     }
 
     enum LoyaltyTransactionType {
@@ -86,163 +93,112 @@ package "Enumerations - Các kiểu liệt kê" {
     }
 }
 
-'========================================
-' CAC LOP NGHIEP VU
-'========================================
+package "Dữ liệu nghiệp vụ - Prisma" {
+    together {
+        class User <<model>> {
+            + id: String
+            + fullName: String
+            + email: String
+            + phone: String?
+            + role: UserRole
+            + status: UserStatus
+            + loyaltyPoints: Integer
+        }
 
-package "Core Domain - Lớp nghiệp vụ" {
+        class Order <<model>> {
+            + id: String
+            + orderCode: String
+            + userId: String?
+            + status: OrderStatus
+            + totalAmount: Decimal
+            + shippingAddress: String?
+            + contactPhone: String?
+            + deletedAt: DateTime?
+        }
 
-    class User {
-        - id: UUID
-        - fullName: String
-        - email: String
-        - passwordHash: String
-        - phone: String
-        - role: UserRole
-        - status: UserStatus
-        - createdAt: DateTime
-        + register()
-        + login()
-        + updateProfile()
+        class Product <<model>> {
+            + id: String
+            + name: String
+            + category: ProductCategory?
+            + basePrice: Decimal
+            + stockQuantity: Integer
+            + status: ProductStatus
+        }
     }
 
-    class Product {
-        - id: UUID
-        - name: String
-        - description: String
-        - basePrice: Decimal
-        - stockQuantity: Integer
-        - imageUrl: String
-        - status: ProductStatus
-        + getDetails()
-        + checkStock(quantity): Boolean
-        + updateStock(quantity)
-    }
+    together {
+        class LoyaltyTransaction <<model>> {
+            + id: String
+            + userId: String
+            + orderId: String?
+            + type: LoyaltyTransactionType
+            + points: Integer
+            + balanceAfter: Integer
+            + createdAt: DateTime
+        }
 
-    class Cart {
-        - id: UUID
-        - createdAt: DateTime
-        - updatedAt: DateTime
-        + addItem(product, quantity)
-        + updateQuantity(productId, quantity)
-        + removeItem(productId)
-        + calculateTotal(): Decimal
-        + clear()
-    }
+        class OrderItem <<model>> {
+            + id: String
+            + orderId: String
+            + productId: String
+            + productName: String
+            + quantity: Integer
+            + unitPrice: Decimal
+            + selectedSize: String?
+            + sugarLevel: String?
+            + iceLevel: String?
+            + selectedToppings: String?
+            + subtotal: Decimal
+        }
 
-    class CartItem {
-        - id: UUID
-        - quantity: Integer
-        - selectedSize: String
-        - selectedToppings: String
-        - unitPrice: Decimal
-        + calculateSubtotal(): Decimal
-    }
-
-    class Order {
-        - id: UUID
-        - orderCode: String
-        - status: OrderStatus
-        - subtotal: Decimal
-        - discountAmount: Decimal
-        - totalAmount: Decimal
-        - shippingAddress: String
-        - note: String
-        - createdAt: DateTime
-        - updatedAt: DateTime
-        + calculateTotal(): Decimal
-        + confirm()
-        + cancel()
-        + updateStatus(status)
-    }
-
-    class OrderItem {
-        - id: UUID
-        - productName: String
-        - quantity: Integer
-        - unitPrice: Decimal
-        - selectedSize: String
-        - selectedToppings: String
-        - subtotal: Decimal
-        + calculateSubtotal(): Decimal
-    }
-
-    class Payment {
-        - id: UUID
-        - transactionId: String
-        - idempotencyKey: String
-        - amount: Decimal
-        - method: PaymentMethod
-        - status: PaymentStatus
-        - failureReason: String
-        - paidAt: DateTime
-        + process()
-        + markSuccess(transactionId)
-        + markFailed(reason)
-        + refund()
-    }
-
-    class Promotion {
-        - id: UUID
-        - code: String
-        - description: String
-        - type: PromotionType
-        - value: Decimal
-        - minimumOrderAmount: Decimal
-        - startAt: DateTime
-        - endAt: DateTime
-        - usageLimit: Integer
-        - usedCount: Integer
-        - isActive: Boolean
-        + isValid(orderAmount): Boolean
-        + calculateDiscount(orderAmount): Decimal
-    }
-
-    class LoyaltyTransaction {
-        - id: UUID
-        - type: LoyaltyTransactionType
-        - points: Integer
-        - balanceAfter: Integer
-        - description: String
-        - createdAt: DateTime
-        + earnPoints()
-        + redeemPoints()
+        class Payment <<model>> {
+            + id: String
+            + orderId: String
+            + transactionId: String?
+            + idempotencyKey: String
+            + amount: Decimal
+            + method: PaymentMethod
+            + status: PaymentStatus
+            + paidAt: DateTime?
+        }
     }
 }
 
-'========================================
-' QUAN HE GIUA CAC LOP
-'========================================
+package "Giỏ hàng - Frontend" {
+    class CartStore <<Zustand persist>> {
+        + items: CartItem[]
+        + addItem(item)
+        + updateQuantity(id, quantity)
+        + removeItem(id)
+        + clearCart()
+    }
 
-' Khach hang co gio hang
-User "1" -- "0..1" Cart : sở hữu
+    class CartItem <<client state>> {
+        + productId: String?
+        + name: String
+        + price: Number
+        + quantity: Integer
+        + selectedSize: String?
+        + sugarLevel: String?
+        + iceLevel: String?
+        + selectedToppings: String[]?
+    }
+}
 
-' Gio hang gom nhieu dong hang
-Cart "1" *-- "0..*" CartItem : chứa
-
-' Moi dong gio hang tham chieu mot san pham
-Product "1" -- "0..*" CartItem : được chọn
-
-' Khach hang tao don hang
-User "1" -- "0..*" Order : đặt
-
-' Don hang gom cac dong chi tiet
+' Keep the core order flow together so its relationship lines stay short.
+User "0..1" -- "0..*" Order : đặt
 Order "1" *-- "1..*" OrderItem : gồm
-
-' Moi dong don hang tham chieu san pham
 Product "1" -- "0..*" OrderItem : sản phẩm
+Order "1" *-- "0..*" Payment : thanh toán
+User "1" -- "0..*" LoyaltyTransaction : điểm
+Order "0..1" -- "0..*" LoyaltyTransaction : phát sinh
+CartStore "1" *-- "0..*" CartItem : lưu
 
-' Mot don co the co nhieu lan thu thanh toan
-Order "1" -- "0..*" Payment : thanh toán
-
-' Ma khuyen mai co the duoc ap dung cho nhieu don
-Promotion "0..1" -- "0..*" Order : áp dụng
-
-' Lich su diem thuoc ve mot tai khoan
-User "1" -- "0..*" LoyaltyTransaction : tích điểm
-
-' Ghi chu:
-' OrderItem luu ten va don gia tai thoi diem dat hang.
-' Payment.idempotencyKey giup tranh xu ly thanh toan lap.
+legend bottom
+  Mã user: KH (CUSTOMER), NV (STAFF), QL (MANAGER).
+  Mã đơn: HD########; xóa mềm không giải phóng mã.
+  CartStore lưu ở localStorage với khóa "brewlite-cart",
+  không lưu trong database.
+endlegend
 
 @enduml

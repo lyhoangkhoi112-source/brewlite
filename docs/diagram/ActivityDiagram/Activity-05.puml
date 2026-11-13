@@ -1,0 +1,57 @@
+@startuml BrowseAndCustomizeBeverage
+title Activity Diagram - Xem thực đơn và tùy chỉnh sản phẩm
+
+skinparam defaultTextAlignment center
+
+|Khách hàng|
+start
+:Mở thực đơn;
+
+|Next.js UI|
+:Gửi yêu cầu lấy thực đơn;
+
+|NestJS API|
+:Lấy sản phẩm không bị ẩn;
+
+|Cơ sở dữ liệu|
+:Trả danh sách sản phẩm;
+
+|Next.js UI|
+:Hiển thị thực đơn;
+if (Có sản phẩm?) then (Có)
+    |Khách hàng|
+    :Chọn sản phẩm;
+
+    |Next.js UI|
+    :Yêu cầu chi tiết sản phẩm;
+
+    |NestJS API|
+    :Tìm sản phẩm theo tên;
+
+    |Cơ sở dữ liệu|
+    :Trả thông tin sản phẩm;
+
+    |Next.js UI|
+    if (Tìm thấy sản phẩm?) then (Có)
+        :Hiển thị chi tiết và trạng thái tồn kho;
+        |Khách hàng|
+        :Chọn kích cỡ, đường, đá,\ntopping và số lượng;
+        if (Sản phẩm còn hàng?) then (Có)
+            :Thêm sản phẩm đã tùy chỉnh vào giỏ hàng;
+            |Next.js UI|
+            :Cập nhật giỏ hàng trên giao diện;
+            :Hiển thị giỏ hàng mới;
+            stop
+        else (Không)
+            :Thông báo sản phẩm tạm hết;
+            stop
+        endif
+    else (Không)
+        :Thông báo không tìm thấy sản phẩm;
+        stop
+    endif
+else (Không)
+    :Thông báo thực đơn hiện chưa có sản phẩm;
+    stop
+endif
+@enduml

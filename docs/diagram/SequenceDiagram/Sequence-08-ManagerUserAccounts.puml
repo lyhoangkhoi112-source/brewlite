@@ -1,0 +1,148 @@
+@startuml Sequence08ManagerUserAccounts
+title Sequence 08 - Quản lý tài khoản khách hàng và nhân viên
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Quản lý" as Manager
+participant "Frontend\nNext.js Manager UI" as UI
+participant "Backend\nNestJS API" as API
+participant "ProductsManagerGuard" as Guard
+participant "UserService" as Service
+database "Database\nPostgreSQL" as DB
+
+note over UI,DB
+Các API /users được bảo vệ bởi ProductsManagerGuard.
+Danh sách mặc định gồm khách hàng và nhân viên;
+không trả danh sách tài khoản quản lý.
+end note
+
+== Tải danh sách tài khoản ==
+
+Manager -> UI: Mở tab tài khoản
+UI -> API: GET /users\nAuthorization: Bearer JWT
+API -> Guard: Xác minh JWT và quyền quản lý
+Guard -> DB: Kiểm tra tài khoản ACTIVE, role MANAGER
+DB --> Guard: Kết quả xác thực
+alt Quản lý đang hoạt động
+    Guard --> API: Cho phép
+    API -> Service: findAll(filters?)
+    Service -> DB: Tìm CUSTOMER và STAFF;\náp dụng bộ lọc nếu có
+    DB --> Service: Danh sách tài khoản
+    Service --> API: Danh sách tài khoản
+    API --> UI: 200 OK - users
+    UI -> UI: Lọc từ khóa, vai trò và trạng thái ở trình duyệt
+    UI --> Manager: Hiển thị danh sách tài khoản
+else Token không hợp lệ hoặc sai quyền
+    Guard --> API: 401 Unauthorized hoặc 403 Forbidden
+    API --> UI: Lỗi xác thực/quyền
+    UI --> Manager: Yêu cầu đăng nhập bằng tài khoản quản lý
+end
+
+== Tạo tài khoản ==
+
+Manager -> UI: Nhập thông tin và chọn vai trò
+UI -> API: POST /users\n(fullName, email, phone?, password, role), JWT
+API -> Guard: Xác minh JWT và quyền quản lý
+Guard --> API: Cho phép nếu ACTIVE, MANAGER
+API -> Service: create(input)
+Service -> Service: Băm mật khẩu
+Service -> Service: Chọn tiền tố mã theo role\nCUSTOMER=KH, STAFF=NV
+Service -> DB: BEGIN; khóa dãy mã và lấy số còn trống
+DB --> Service: Mã user kế tiếp
+Service -> DB: INSERT User với mã, thông tin\nvà passwordHash
+alt Email chưa được sử dụng
+    DB --> Service: Tài khoản đã tạo
+    Service -> DB: COMMIT
+    Service --> API: User không bao gồm passwordHash
+    API --> UI: 201 Created
+    UI -> API: GET /users\n(tải lại dashboard)
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard --> API: Cho phép nếu ACTIVE, MANAGER
+    API -> Service: findAll()
+    Service -> DB: Tải CUSTOMER và STAFF
+    DB --> Service: Danh sách mới
+    Service --> API: Danh sách tài khoản
+    API --> UI: 200 OK
+    UI --> Manager: Hiển thị tài khoản vừa tạo
+else Email bị trùng
+    DB --> Service: Unique constraint violation
+    Service -> DB: ROLLBACK
+    Service --> API: 409 Conflict - Email đã sử dụng
+    API --> UI: Lỗi tạo tài khoản
+    UI --> Manager: Hiển thị thông báo email bị trùng
+end
+
+== Cập nhật tài khoản ==
+
+Manager -> UI: Chỉnh sửa thông tin hoặc vai trò
+UI -> API: PATCH /users/{id}\n(chỉ trường thay đổi), JWT
+API -> Guard: Xác minh JWT và quyền quản lý
+Guard --> API: Cho phép nếu ACTIVE, MANAGER
+API -> Service: update(id, input)
+Service -> DB: Tìm CUSTOMER/STAFF theo id
+alt Tài khoản tồn tại và vai trò không đổi
+    Service -> DB: UPDATE thông tin tài khoản
+    DB --> Service: User đã cập nhật
+    Service --> API: User
+    API --> UI: 200 OK
+    UI --> Manager: Tải lại danh sách và hiển thị kết quả
+else Đổi vai trò CUSTOMER <-> STAFF
+    Service -> Service: Chọn tiền tố mã mới KH hoặc NV
+    Service -> DB: BEGIN; lấy số còn trống cho tiền tố mới
+    DB --> Service: Mã user mới
+    Service -> DB: UPDATE thông tin và mã user
+    DB --> Service: User đã cập nhật
+    Service -> DB: COMMIT
+    Service --> API: User với mã mới
+    API --> UI: 200 OK
+    UI --> Manager: Tải lại danh sách và hiển thị kết quả
+else Email trùng hoặc không tìm thấy
+    Service --> API: 409 Conflict hoặc 404 Not Found
+    API --> UI: Lỗi cập nhật
+    UI --> Manager: Hiển thị thông báo lỗi
+end
+
+== Mở khóa tài khoản ==
+
+opt Tài khoản đang BLOCKED
+    Manager -> UI: Chọn mở khóa
+    UI -> API: POST /users/{id}/unlock\nAuthorization: Bearer JWT
+    API -> Guard: Xác minh JWT và quyền quản lý
+    Guard --> API: Cho phép nếu ACTIVE, MANAGER
+    API -> Service: unlock(id)
+    Service -> DB: Kiểm tra tài khoản BLOCKED
+    alt Đang bị khóa
+        Service -> DB: Đặt ACTIVE; xóa bộ đếm sai\nvà lockedUntil
+        DB --> Service: User đã mở khóa
+        Service --> API: User
+        API --> UI: 200 OK
+        UI --> Manager: Tải lại danh sách
+    else Không ở trạng thái BLOCKED
+        Service --> API: 409 Conflict
+        API --> UI: Không thể mở khóa
+        UI --> Manager: Hiển thị trạng thái không hợp lệ
+    end
+end
+
+== Ngừng hoạt động tài khoản ==
+
+Manager -> UI: Xác nhận ngừng tài khoản
+UI -> API: DELETE /users/{id}\nAuthorization: Bearer JWT
+API -> Guard: Xác minh JWT và quyền quản lý
+Guard --> API: Cho phép nếu ACTIVE, MANAGER
+API -> Service: softDelete(id)
+Service -> DB: Đặt status = INACTIVE\n(không xóa cứng tài khoản)
+DB --> Service: User đã cập nhật
+Service --> API: User
+API --> UI: 200 OK
+UI --> Manager: Tải lại danh sách tài khoản
+
+@enduml

@@ -1,0 +1,27 @@
+@startuml
+left to right direction
+title USE CASE 02 - XEM THỰC ĐƠN VÀ LỰA CHỌN SẢN PHẨM
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Khách hàng" as Customer
+
+rectangle "Hệ thống BrewLite\n- Khám phá sản phẩm -" {
+    usecase "Xem thực đơn" as Menu
+    usecase "Xem chi tiết\nsản phẩm" as Detail
+    usecase "Tùy chọn sản phẩm\n(kích cỡ, đường, đá, topping)" as Option
+}
+
+Customer -- Menu
+Customer -- Detail
+Customer -- Option
+
+Option ..> Detail : <<extend>>
+@enduml

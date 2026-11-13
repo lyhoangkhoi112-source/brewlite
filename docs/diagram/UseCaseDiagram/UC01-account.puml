@@ -1,0 +1,31 @@
+@startuml
+left to right direction
+title USE CASE 01 - TÀI KHOẢN VÀ XÁC THỰC
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Khách hàng" as Customer
+actor "Nhân viên quầy" as Staff
+actor "Quản lý cửa hàng" as Manager
+
+rectangle "Hệ thống BrewLite\n- Tài khoản và xác thực -" {
+    usecase "Đăng ký tài khoản\nkhách hàng" as Register
+    usecase "Đăng nhập" as Login
+    usecase "Đổi mật khẩu" as ChangePassword
+    usecase "Quản lý tài khoản\nkhách hàng và nhân viên" as ManageUsers
+}
+
+Customer -- Register
+Customer -- Login
+Customer -- ChangePassword
+Staff -- Login
+Manager -- Login
+Manager -- ManageUsers
+@enduml

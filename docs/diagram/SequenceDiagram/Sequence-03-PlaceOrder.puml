@@ -1,0 +1,74 @@
+@startuml Sequence03PlaceOrder
+title Sequence 03 - Đặt hàng và khởi tạo thanh toán
+
+autonumber
+hide footbox
+skinparam backgroundColor white
+skinparam sequence {
+    ParticipantBackgroundColor #EAF3FF
+    ParticipantBorderColor #245A81
+    ActorBorderColor #245A81
+    LifeLineBorderColor #6685A3
+}
+
+actor "Khách hàng" as C
+participant "Frontend\nNext.js UI" as UI
+participant "Backend\nNestJS API" as API
+participant "PaymentsService\n(Mock, nội bộ NestJS)" as PAY
+database "Database\nPostgreSQL" as DB
+
+C -> UI: Xác nhận giỏ hàng và thông tin giao hàng
+UI -> UI: Kiểm tra địa chỉ và số điện thoại
+alt Thông tin giao hàng không hợp lệ
+    UI --> C: Yêu cầu nhập địa chỉ/số điện thoại hợp lệ
+else Thông tin giao hàng hợp lệ
+    C -> UI: Gửi yêu cầu đặt hàng
+    opt Khách hàng đã đăng nhập
+        UI -> UI: Đính kèm JWT Bearer
+    end
+    UI -> API: POST /orders\n(items, shippingAddress, contactPhone,\nnote?, redeemPoints?)
+    activate API
+
+    alt JWT hợp lệ và tài khoản hoạt động (nếu có)
+        API -> API: Kiểm tra quyền khách hàng,\nchuẩn hóa và xác thực dữ liệu
+        API -> DB: BEGIN TRANSACTION
+        API -> DB: Đọc sản phẩm và tồn kho
+        DB --> API: Thông tin sản phẩm
+
+        alt Thiếu sản phẩm, ngừng bán hoặc không đủ hàng
+            API -> DB: ROLLBACK
+            API --> UI: Lỗi sản phẩm/tồn kho
+            UI --> C: Thông báo không thể đặt hàng
+        else Sản phẩm hợp lệ
+            API -> API: Tính giá từ dữ liệu server\nvà kiểm tra giới hạn đổi điểm
+            opt Khách đăng nhập và đổi điểm
+                API -> DB: Kiểm tra và trừ điểm trong transaction
+                DB --> API: Số dư điểm sau đổi
+            end
+
+            API -> DB: Lấy khóa tuần tự mã HD
+            API -> DB: Chọn mã HD######## còn trống
+            API -> PAY: Tạo dữ liệu giao dịch PENDING\n(method mặc định MOMO hoặc phương thức chọn)
+            PAY --> API: idempotencyKey duy nhất
+            API -> DB: Giảm tồn kho; tạo Order, OrderItem\nvà Payment PENDING
+            API -> DB: COMMIT
+            DB --> API: Đơn và giao dịch đã tạo
+
+            API --> UI: 201 Created\n(order, orderCode, payments,\nguestAccessToken nếu khách)
+            deactivate API
+
+            alt Khách vãng lai
+                UI -> UI: Lưu guestAccessToken trong localStorage
+            else Khách đã đăng nhập
+                UI -> UI: Giữ đơn trong phiên khách hàng
+            end
+            UI --> C: Hiển thị xác nhận đơn\nvà mở thanh toán mô phỏng
+        end
+    else JWT không hợp lệ hoặc tài khoản không hoạt động
+        API --> UI: 401/403 - Từ chối tạo đơn
+        deactivate API
+        UI --> C: Hiển thị thông báo lỗi tài khoản
+    end
+end
+
+@enduml

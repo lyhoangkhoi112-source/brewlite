@@ -1,0 +1,34 @@
+@startuml
+left to right direction
+title USE CASE 03 - GIỎ HÀNG, ĐẶT HÀNG VÀ THANH TOÁN
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Khách hàng\n(đã đăng nhập hoặc khách)" as Customer
+
+rectangle "Hệ thống BrewLite\n- Giỏ hàng và đặt hàng -" {
+    usecase "Quản lý giỏ hàng" as Cart
+    usecase "Đặt đơn hàng" as PlaceOrder
+    usecase "Kiểm tra sản phẩm\nvà tồn kho" as ValidateOrder
+    usecase "Xem xác nhận đơn hàng" as ConfirmOrder
+    usecase "Thanh toán mô phỏng" as Payment
+    usecase "Đổi điểm thưởng\n(khách hàng đăng nhập)" as RedeemPoints
+}
+
+Customer -- Cart
+Customer -- PlaceOrder
+Customer -- Payment
+Customer -- RedeemPoints
+
+PlaceOrder ..> ValidateOrder : <<include>>
+PlaceOrder ..> ConfirmOrder : <<include>>
+Payment ..> PlaceOrder : <<extend>>
+RedeemPoints ..> PlaceOrder : <<extend>>
+@enduml

@@ -1,0 +1,75 @@
+@startuml StaffOrderProcessing
+title Activity Diagram - Nhân viên tiếp nhận và xử lý đơn hàng
+
+skinparam defaultTextAlignment center
+
+|Nhân viên quầy|
+start
+:Mở trang quản lý đơn;
+
+|Next.js UI|
+if (Có phiên nhân viên hợp lệ?) then (Có)
+    :Yêu cầu danh sách đơn hoặc tìm theo mã;
+else (Không)
+    :Hiển thị trang đăng nhập nhân viên;
+    stop
+endif
+
+|NestJS API|
+:Xác thực JWT và vai trò STAFF;
+if (Tài khoản nhân viên hợp lệ?) then (Có)
+    :Lấy đơn chưa bị ẩn\nhoặc tìm theo mã đơn;
+    |Cơ sở dữ liệu|
+    :Trả danh sách đơn;
+    |Next.js UI|
+    :Hiển thị hàng đợi đơn hàng;
+    |Nhân viên quầy|
+    :Chọn đơn cần xử lý;
+    if (Thao tác?) then (Cập nhật trạng thái)
+        |Next.js UI|
+        :Gửi trạng thái tiếp theo;
+        |NestJS API|
+        :Kiểm tra chuyển trạng thái hợp lệ;
+        if (Nhận đơn nhưng còn thanh toán PENDING?) then (Có)
+            |Next.js UI|
+            :Thông báo cần hoàn tất thanh toán;
+        else (Không)
+            |Cơ sở dữ liệu|
+            :Lưu CONFIRMED, PREPARING\nhoặc READY;
+            |Next.js UI|
+            :Tải lại và hiển thị trạng thái mới;
+        endif
+    elseif (Từ chối đơn)
+        |Nhân viên quầy|
+        :Nhập lý do từ chối;
+        |NestJS API|
+        :Chỉ cho từ chối đơn đang PENDING;
+        :Hủy giao dịch chờ và hoàn tồn kho,\nđiểm đã đổi;
+        |Cơ sở dữ liệu|
+        :Lưu đơn CANCELLED và lý do;
+        |Next.js UI|
+        :Tải lại danh sách đơn;
+    elseif (Hủy đơn)
+        |Nhân viên quầy|
+        :Nhập lý do hủy nếu cần;
+        |NestJS API|
+        :Chỉ cho hủy đơn PENDING hoặc CONFIRMED;
+        :Hủy giao dịch chờ và hoàn tồn kho,\nđiểm đã đổi;
+        |Cơ sở dữ liệu|
+        :Lưu đơn CANCELLED;
+        |Next.js UI|
+        :Tải lại danh sách đơn;
+    else (Ẩn đơn)
+        |NestJS API|
+        :Chỉ cho ẩn đơn READY,\nCOMPLETED hoặc CANCELLED;
+        |Cơ sở dữ liệu|
+        :Đặt thời điểm xóa mềm;
+        |Next.js UI|
+        :Thông báo đã ẩn đơn khỏi danh sách;
+    endif
+else (Không)
+    |Next.js UI|
+    :Từ chối truy cập và yêu cầu đăng nhập;
+endif
+stop
+@enduml

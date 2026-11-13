@@ -1,0 +1,68 @@
+@startuml OrderHistoryAndTracking
+title Activity Diagram - Xem lịch sử và theo dõi đơn hàng
+
+skinparam defaultTextAlignment center
+
+|Khách hàng|
+start
+:Mở lịch sử đơn hàng;
+
+|Next.js UI|
+if (Đã đăng nhập?) then (Có)
+    :Gửi yêu cầu lấy đơn của tài khoản;
+    |NestJS API|
+    :Xác thực JWT và tìm đơn theo userId;
+else (Không)
+    :Đọc mã truy cập đơn khách đã lưu;
+    if (Có mã truy cập?) then (Có)
+        :Gửi yêu cầu tra cứu đơn khách;
+        |NestJS API|
+        :Băm mã truy cập và tìm đơn tương ứng;
+    else (Không)
+        :Hiển thị chưa có lịch sử đơn khách;
+        stop
+    endif
+endif
+
+|Cơ sở dữ liệu|
+:Trả các đơn chưa bị ẩn;
+
+|Next.js UI|
+:Hiển thị lịch sử và trạng thái đơn;
+if (Có đơn cần theo dõi?) then (Có)
+    repeat
+        |Next.js UI|
+        :Tải lại trạng thái đơn định kỳ;
+        |NestJS API|
+        :Lấy trạng thái mới nhất;
+        |Cơ sở dữ liệu|
+        :Trả trạng thái đơn;
+        |Next.js UI|
+        :Cập nhật trạng thái trên giao diện;
+    repeat while (Đơn còn đang được theo dõi?) is (Có)
+    ->Không;
+endif
+
+|Khách hàng|
+if (Muốn hủy đơn?) then (Có)
+    |Next.js UI|
+    :Gửi yêu cầu hủy kèm quyền truy cập;
+    |NestJS API|
+    :Kiểm tra quyền và trạng thái đơn;
+    if (Đơn đang chờ hoặc đã xác nhận?) then (Có)
+        :Hủy giao dịch đang chờ;
+        :Hoàn tồn kho và điểm đã đổi;
+        |Cơ sở dữ liệu|
+        :Lưu trạng thái CANCELLED;
+        |Next.js UI|
+        :Hiển thị đơn đã hủy;
+    else (Không)
+        |Next.js UI|
+        :Thông báo không thể hủy ở trạng thái này;
+    endif
+else (Không)
+    |Khách hàng|
+    :Tiếp tục xem thông tin đơn;
+endif
+stop
+@enduml

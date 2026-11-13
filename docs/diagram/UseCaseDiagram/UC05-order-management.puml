@@ -1,0 +1,31 @@
+@startuml
+left to right direction
+title USE CASE 05 - NHÂN VIÊN XỬ LÝ ĐƠN HÀNG
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #EAF3FF
+    BorderColor #2874A6
+}
+skinparam actorStyle awesome
+
+actor "Nhân viên quầy" as Staff
+
+rectangle "Hệ thống BrewLite\n- Xử lý đơn hàng tại quầy -" {
+    usecase "Xem danh sách đơn" as ViewOrders
+    usecase "Tìm đơn theo mã" as SearchOrder
+    usecase "Cập nhật trạng thái đơn" as UpdateStatus
+    usecase "Từ chối đơn" as RejectOrder
+    usecase "Hủy đơn" as CancelOrder
+    usecase "Ẩn đơn khỏi danh sách\n(xóa mềm)" as HideOrder
+}
+
+Staff -- ViewOrders
+Staff -- SearchOrder
+Staff -- UpdateStatus
+Staff -- RejectOrder
+Staff -- CancelOrder
+Staff -- HideOrder
+@enduml

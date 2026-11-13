@@ -1,0 +1,33 @@
+@startuml InventoryReport
+title Activity Diagram - Xem báo cáo tồn kho
+
+skinparam defaultTextAlignment center
+
+|Quản lý cửa hàng|
+start
+:Mở trang tổng quan cửa hàng;
+
+|Next.js UI|
+:Yêu cầu báo cáo tồn kho;
+
+|NestJS API|
+:Xác thực quyền quản lý;
+:Lấy sản phẩm chưa bị ẩn;
+
+|Cơ sở dữ liệu|
+:Trả số lượng tồn kho;
+
+|NestJS API|
+:Tính danh sách sản phẩm sắp hết;
+
+|Next.js UI|
+:Hiển thị tồn kho và ngưỡng cảnh báo;
+if (Có sản phẩm sắp hết?) then (Có)
+    :Đánh dấu sản phẩm dưới ngưỡng tồn kho;
+else (Không)
+    :Hiển thị không có sản phẩm sắp hết;
+endif
+|Quản lý cửa hàng|
+:Xem báo cáo tồn kho;
+stop
+@enduml
