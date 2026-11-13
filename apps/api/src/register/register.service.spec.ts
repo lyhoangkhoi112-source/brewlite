@@ -7,13 +7,20 @@ import { RegisterService } from './register.service.js';
 
 describe('RegisterService', () => {
   let service: RegisterService;
-  let prisma: { user: { create: ReturnType<typeof vi.fn> } };
+  let prisma: {
+    user: {
+      create: ReturnType<typeof vi.fn>;
+      findMany: ReturnType<typeof vi.fn>;
+    };
+    $queryRaw: ReturnType<typeof vi.fn>;
+    $transaction: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     prisma = {
       user: {
         create: vi.fn().mockResolvedValue({
-          id: 'user-id',
+          id: 'KH00000001',
           fullName: 'Test User',
           email: 'user@example.com',
           phone: null,
@@ -21,7 +28,13 @@ describe('RegisterService', () => {
           status: 'ACTIVE',
           createdAt: new Date(),
         }),
+        findMany: vi.fn().mockResolvedValue([]),
       },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn(
+        (callback: (transaction: typeof prisma) => Promise<unknown>) =>
+          callback(prisma),
+      ),
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -40,6 +53,7 @@ describe('RegisterService', () => {
     });
 
     const createArgument = prisma.user.create.mock.calls[0][0];
+    expect(createArgument.data.id).toBe('KH00000001');
     expect(createArgument.data.fullName).toBe('Test User');
     expect(createArgument.data.email).toBe('user@example.com');
     expect(createArgument.data.passwordHash).not.toBe('secure-password');

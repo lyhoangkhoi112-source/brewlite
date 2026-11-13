@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   OrderStatus,
   PaymentMethod,
@@ -16,9 +16,13 @@ import {
   UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { getNextSequentialCodeInTransaction } from '../prisma/sequential-code.js';
+import { PaymentsService } from '../payments/payments.service.js';
+import {
+  getOrderConfirmationSelect,
+  hashGuestAccessToken,
+} from './order.utils.js';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto.js';
-import { MockPaymentDto } from './dto/mock-payment.dto.js';
-import { RetryMockPaymentDto } from './dto/retry-mock-payment.dto.js';
 
 type OrderRequestItem = Pick<
   CreateOrderItemDto,
@@ -29,13 +33,6 @@ type OrderRequestItem = Pick<
   | 'iceLevel'
   | 'selectedToppings'
 >;
-
-function areMockPaymentsEnabled(): boolean {
-  return (
-    process.env.NODE_ENV !== 'production' ||
-    process.env.MOCK_PAYMENTS_ENABLED === 'true'
-  );
-}
 
 function getRequestItems(input: CreateOrderDto): OrderRequestItem[] {
   if (
@@ -61,7 +58,10 @@ function getRequestItems(input: CreateOrderDto): OrderRequestItem[] {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   async createOrder(input: CreateOrderDto) {
     return this.createOrderForUser(input, undefined);
@@ -75,7 +75,7 @@ export class OrdersService {
     if (!authenticatedUserId && redeemPoints > 0) {
       throw new ForbiddenException('Đăng nhập để sử dụng điểm khách hàng');
     }
-    if (input.paymentMethod && !areMockPaymentsEnabled()) {
+    if (input.paymentMethod && !this.paymentsService.isMockPaymentsEnabled()) {
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 
@@ -113,7 +113,7 @@ export class OrdersService {
 
     const guestAccessToken = userId ? null : randomBytes(32).toString('hex');
     const guestAccessTokenHash = guestAccessToken
-      ? this.hashGuestToken(guestAccessToken)
+      ? hashGuestAccessToken(guestAccessToken)
       : null;
 
     const order = await this.prisma.$transaction(async (transaction) => {
@@ -218,9 +218,13 @@ export class OrdersService {
         loyaltyBalanceAfterRedemption = user.loyaltyPoints;
       }
 
+      const orderCode = await getNextSequentialCodeInTransaction(
+        transaction,
+        'HD',
+      );
       const createdOrder = await transaction.order.create({
         data: {
-          orderCode: `BL-${randomUUID()}`,
+          orderCode,
           guestAccessTokenHash,
           userId,
           shippingAddress,
@@ -232,21 +236,26 @@ export class OrdersService {
           orderItems: {
             create: orderItems,
           },
-          ...(areMockPaymentsEnabled()
+          ...(this.paymentsService.isMockPaymentsEnabled()
             ? {
                 payments: {
                   create: {
-                    idempotencyKey: randomUUID(),
-                    amount: subtotal.sub(discountAmount),
-                    method: input.paymentMethod ?? PaymentMethod.MOMO,
+                    ...this.paymentsService.createPendingPaymentData(
+                      subtotal.sub(discountAmount),
+                      input.paymentMethod ?? PaymentMethod.MOMO,
+                    ),
                   },
                 },
               }
             : {}),
         },
-        select: this.orderConfirmationSelect(),
+        select: getOrderConfirmationSelect(),
       });
-      if (redeemPoints > 0 && userId && loyaltyBalanceAfterRedemption !== null) {
+      if (
+        redeemPoints > 0 &&
+        userId &&
+        loyaltyBalanceAfterRedemption !== null
+      ) {
         await transaction.loyaltyTransaction.create({
           data: {
             userId,
@@ -262,313 +271,6 @@ export class OrdersService {
     });
 
     return guestAccessToken ? { ...order, guestAccessToken } : order;
-  }
-
-  async simulateMockPayment(
-    orderId: string,
-    paymentId: string,
-    input: MockPaymentDto,
-    userId: string | undefined,
-    paymentIdAccess = false,
-  ) {
-    if (!areMockPaymentsEnabled()) {
-      throw new ForbiddenException('Mock payments are disabled in production');
-    }
-
-    const access = paymentIdAccess
-      ? {}
-      : userId
-        ? { userId }
-        : input.guestAccessToken
-          ? {
-              guestAccessTokenHash: this.hashGuestToken(
-                input.guestAccessToken,
-              ),
-            }
-          : null;
-    if (!paymentIdAccess && !access) {
-      throw new NotFoundException('Không tìm thấy đơn hàng');
-    }
-
-    return this.prisma.$transaction(async (transaction) => {
-      const order = await transaction.order.findFirst({
-        where: { id: orderId, ...access },
-        select: {
-          id: true,
-          orderCode: true,
-          userId: true,
-          status: true,
-          totalAmount: true,
-          orderItems: {
-            select: { productId: true, quantity: true },
-          },
-        },
-      });
-      if (!order) {
-        throw new NotFoundException('Không tìm thấy đơn hàng');
-      }
-      if (order.status !== OrderStatus.PENDING) {
-        throw new ConflictException('Đơn hàng đã được xử lý');
-      }
-
-      const paymentStatus = {
-        SUCCESS: PaymentStatus.SUCCESS,
-        FAILED: PaymentStatus.FAILED,
-        CANCELLED: PaymentStatus.CANCELLED,
-      }[input.outcome];
-      const orderStatus = {
-        SUCCESS: OrderStatus.CONFIRMED,
-        FAILED: OrderStatus.PAYMENT_FAILED,
-        CANCELLED: OrderStatus.CANCELLED,
-      }[input.outcome];
-      const paymentUpdate = await transaction.payment.updateMany({
-        where: {
-          id: paymentId,
-          orderId,
-          status: PaymentStatus.PENDING,
-          method: {
-            in: [
-              PaymentMethod.MOMO,
-              PaymentMethod.VNPAY,
-              PaymentMethod.SHOPEEPAY,
-            ],
-          },
-        },
-        data: {
-          ...(input.paymentMethod ? { method: input.paymentMethod } : {}),
-          status: paymentStatus,
-          transactionId:
-            input.outcome === 'SUCCESS' ? `MOCK-${randomUUID()}` : null,
-          failureReason:
-            input.outcome === 'FAILED'
-              ? 'Mock payment failed'
-              : input.outcome === 'CANCELLED'
-                ? 'Mock payment cancelled'
-                : null,
-          paidAt: input.outcome === 'SUCCESS' ? new Date() : null,
-        },
-      });
-      if (paymentUpdate.count !== 1) {
-        throw new ConflictException('Giao dịch đã được xử lý');
-      }
-
-      const orderUpdate = await transaction.order.updateMany({
-        where: { id: orderId, status: OrderStatus.PENDING, ...access },
-        data: { status: orderStatus },
-      });
-      if (orderUpdate.count !== 1) {
-        throw new ConflictException('Đơn hàng đã được xử lý');
-      }
-
-      if (input.outcome !== 'SUCCESS') {
-        if (input.outcome === 'CANCELLED') {
-          await this.reverseOrderLoyaltyPoints(
-            transaction,
-            order.id,
-            order.userId,
-            order.orderCode,
-          );
-        }
-        await this.restoreOrderStock(transaction, order.orderItems);
-      } else if (order.userId) {
-        const points = order.totalAmount.div(10_000).floor().toNumber();
-        if (points > 0) {
-          const user = await transaction.user.update({
-            where: { id: order.userId },
-            data: { loyaltyPoints: { increment: points } },
-            select: { loyaltyPoints: true },
-          });
-          await transaction.loyaltyTransaction.create({
-            data: {
-              userId: order.userId,
-              orderId: order.id,
-              type: 'EARN',
-              points,
-              balanceAfter: user.loyaltyPoints,
-              description: `Tích điểm từ đơn ${order.orderCode}`,
-            },
-          });
-        }
-      }
-
-      return transaction.order.findUniqueOrThrow({
-        where: { id: orderId },
-        select: this.orderConfirmationSelect(),
-      });
-    });
-  }
-
-  async getMockPaymentDetails(paymentId: string) {
-    if (!areMockPaymentsEnabled()) {
-      throw new ForbiddenException('Mock payments are disabled in production');
-    }
-
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
-      select: {
-        id: true,
-        amount: true,
-        method: true,
-        status: true,
-        order: {
-          select: {
-            orderCode: true,
-            status: true,
-          },
-        },
-      },
-    });
-    if (!payment) {
-      throw new NotFoundException('Không tìm thấy giao dịch thanh toán');
-    }
-
-    return {
-      paymentId: payment.id,
-      amount: payment.amount,
-      method: payment.method,
-      paymentStatus: payment.status,
-      orderCode: payment.order.orderCode,
-      orderStatus: payment.order.status,
-    };
-  }
-
-  async simulateMockPaymentFromLink(
-    paymentId: string,
-    input: MockPaymentDto,
-  ) {
-    if (!areMockPaymentsEnabled()) {
-      throw new ForbiddenException('Mock payments are disabled in production');
-    }
-
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
-      select: { orderId: true },
-    });
-    if (!payment) {
-      throw new NotFoundException('Không tìm thấy giao dịch thanh toán');
-    }
-
-    return this.simulateMockPayment(
-      payment.orderId,
-      paymentId,
-      input,
-      undefined,
-      true,
-    );
-  }
-
-  async retryMockPayment(
-    orderId: string,
-    input: RetryMockPaymentDto,
-    userId: string | undefined,
-  ) {
-    if (!areMockPaymentsEnabled()) {
-      throw new ForbiddenException('Mock payments are disabled in production');
-    }
-
-    const access = userId
-      ? { userId }
-      : input.guestAccessToken
-        ? {
-            guestAccessTokenHash: this.hashGuestToken(input.guestAccessToken),
-          }
-        : null;
-    if (!access) {
-      throw new NotFoundException('Không tìm thấy đơn hàng');
-    }
-
-    return this.prisma.$transaction(async (transaction) => {
-      const order = await transaction.order.findFirst({
-        where: { id: orderId, ...access },
-        select: {
-          id: true,
-          status: true,
-          totalAmount: true,
-          payments: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            select: { status: true, failureReason: true },
-          },
-          orderItems: {
-            select: { productId: true, quantity: true },
-          },
-        },
-      });
-      if (!order) {
-        throw new NotFoundException('Không tìm thấy đơn hàng');
-      }
-      const isRetryableCancelledPayment =
-        order.status === OrderStatus.CANCELLED &&
-        order.payments[0]?.status === PaymentStatus.CANCELLED &&
-        order.payments[0].failureReason === 'Mock payment cancelled';
-      if (
-        order.status !== OrderStatus.PAYMENT_FAILED &&
-        !isRetryableCancelledPayment
-      ) {
-        throw new ConflictException(
-          'Chỉ có thể thanh toán lại đơn hàng thất bại hoặc giao dịch đã hủy',
-        );
-      }
-
-      const quantities = new Map<string, number>();
-      for (const item of order.orderItems) {
-        quantities.set(
-          item.productId,
-          (quantities.get(item.productId) ?? 0) + item.quantity,
-        );
-      }
-
-      for (const [productId, quantity] of quantities) {
-        const reserved = await transaction.product.updateMany({
-          where: {
-            id: productId,
-            status: ProductStatus.AVAILABLE,
-            stockQuantity: { gte: quantity },
-          },
-          data: { stockQuantity: { decrement: quantity } },
-        });
-        if (reserved.count !== 1) {
-          throw new UnprocessableEntityException(
-            'Sản phẩm trong đơn hiện không đủ số lượng để thanh toán lại',
-          );
-        }
-
-        await transaction.product.updateMany({
-          where: {
-            id: productId,
-            status: ProductStatus.AVAILABLE,
-            stockQuantity: 0,
-          },
-          data: { status: ProductStatus.OUT_OF_STOCK },
-        });
-      }
-
-      const reopened = await transaction.order.updateMany({
-        where: {
-          id: orderId,
-          status: order.status,
-          ...access,
-        },
-        data: { status: OrderStatus.PENDING },
-      });
-      if (reopened.count !== 1) {
-        throw new ConflictException('Đơn hàng đã được xử lý');
-      }
-
-      await transaction.payment.create({
-        data: {
-          orderId,
-          idempotencyKey: randomUUID(),
-          amount: order.totalAmount,
-          method: input.paymentMethod ?? PaymentMethod.MOMO,
-        },
-      });
-
-      return transaction.order.findUniqueOrThrow({
-        where: { id: orderId },
-        select: this.orderConfirmationSelect(),
-      });
-    });
   }
 
   async getLoyaltyForUser(userId: string) {
@@ -607,7 +309,10 @@ export class OrdersService {
     });
     return orders.map(({ payments, ...order }) => ({
       ...order,
-      canRetryPayment: this.hasCancelledMockPayment(order.status, payments),
+      canRetryPayment: this.paymentsService.hasCancelledMockPayment(
+        order.status,
+        payments,
+      ),
     }));
   }
 
@@ -736,7 +441,10 @@ export class OrdersService {
           'Không thể cập nhật đơn hàng vì đơn chưa ở trạng thái phù hợp',
         );
       }
-      if (status === OrderStatus.CONFIRMED && currentOrder.payments.length > 0) {
+      if (
+        status === OrderStatus.CONFIRMED &&
+        currentOrder.payments.length > 0
+      ) {
         throw new ConflictException(
           'Đơn hàng chưa hoàn tất thanh toán nên chưa thể nhận',
         );
@@ -790,20 +498,21 @@ export class OrdersService {
         throw new ConflictException('Đơn hàng đã được xử lý');
       }
 
-      await transaction.payment.updateMany({
-        where: { orderId, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.CANCELLED,
-          failureReason: rejectionReason,
-        },
-      });
-      await this.reverseOrderLoyaltyPoints(
+      await this.paymentsService.cancelPendingPayments(
+        transaction,
+        orderId,
+        rejectionReason,
+      );
+      await this.paymentsService.reverseOrderLoyaltyPoints(
         transaction,
         order.id,
         order.userId,
         order.orderCode,
       );
-      await this.restoreOrderStock(transaction, order.orderItems);
+      await this.paymentsService.restoreOrderStock(
+        transaction,
+        order.orderItems,
+      );
 
       return transaction.order.findUniqueOrThrow({
         where: { id: orderId },
@@ -849,20 +558,21 @@ export class OrdersService {
         throw new ConflictException('Đơn hàng đã được xử lý');
       }
 
-      await transaction.payment.updateMany({
-        where: { orderId, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.CANCELLED,
-          failureReason: cancellationReason ?? 'Đơn hàng đã bị nhân viên hủy',
-        },
-      });
-      await this.reverseOrderLoyaltyPoints(
+      await this.paymentsService.cancelPendingPayments(
+        transaction,
+        orderId,
+        cancellationReason ?? 'Đơn hàng đã bị nhân viên hủy',
+      );
+      await this.paymentsService.reverseOrderLoyaltyPoints(
         transaction,
         order.id,
         order.userId,
         order.orderCode,
       );
-      await this.restoreOrderStock(transaction, order.orderItems);
+      await this.paymentsService.restoreOrderStock(
+        transaction,
+        order.orderItems,
+      );
 
       return transaction.order.findUniqueOrThrow({
         where: { id: orderId },
@@ -879,7 +589,7 @@ export class OrdersService {
         userId: null,
         deletedAt: null,
         guestAccessTokenHash: {
-          in: accessTokens.map((token) => this.hashGuestToken(token)),
+          in: accessTokens.map((token) => hashGuestAccessToken(token)),
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -887,7 +597,10 @@ export class OrdersService {
     });
     return orders.map(({ payments, ...order }) => ({
       ...order,
-      canRetryPayment: this.hasCancelledMockPayment(order.status, payments),
+      canRetryPayment: this.paymentsService.hasCancelledMockPayment(
+        order.status,
+        payments,
+      ),
     }));
   }
 
@@ -900,7 +613,7 @@ export class OrdersService {
       ? { userId }
       : {
           guestAccessTokenHash: {
-            in: guestAccessTokens.map((token) => this.hashGuestToken(token)),
+            in: guestAccessTokens.map((token) => hashGuestAccessToken(token)),
           },
         };
     if (!userId && guestAccessTokens.length === 0) {
@@ -944,137 +657,27 @@ export class OrdersService {
         throw new ConflictException('Đơn hàng đã được xử lý');
       }
 
-      await transaction.payment.updateMany({
-        where: { orderId, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.CANCELLED,
-          failureReason: 'Đơn hàng đã được khách hàng hủy',
-        },
-      });
-      await this.reverseOrderLoyaltyPoints(
+      await this.paymentsService.cancelPendingPayments(
+        transaction,
+        orderId,
+        'Đơn hàng đã được khách hàng hủy',
+      );
+      await this.paymentsService.reverseOrderLoyaltyPoints(
         transaction,
         order.id,
         order.userId,
         order.orderCode,
       );
-      await this.restoreOrderStock(transaction, order.orderItems);
+      await this.paymentsService.restoreOrderStock(
+        transaction,
+        order.orderItems,
+      );
 
       return transaction.order.findUniqueOrThrow({
         where: { id: orderId },
         select: this.orderHistorySelect(),
       });
     });
-  }
-
-  private hashGuestToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
-  }
-
-  private async reverseOrderLoyaltyPoints(
-    transaction: Prisma.TransactionClient,
-    orderId: string,
-    userId: string | null,
-    orderCode: string,
-  ) {
-    if (!userId) return;
-
-    const pointTransactions = await transaction.loyaltyTransaction.findMany({
-      where: { orderId, type: { in: ['EARN', 'REDEEM'] } },
-      select: { type: true, points: true },
-    });
-    if (pointTransactions.length === 0) return;
-
-    const currentUser = await transaction.user.findUnique({
-      where: { id: userId },
-      select: { loyaltyPoints: true },
-    });
-    if (!currentUser) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-
-    let balance = currentUser.loyaltyPoints;
-    for (const type of ['REDEEM', 'EARN'] as const) {
-      for (const pointTransaction of pointTransactions) {
-        if (pointTransaction.type !== type) continue;
-        const points =
-          type === 'REDEEM'
-            ? pointTransaction.points
-            : Math.min(pointTransaction.points, balance);
-        if (points <= 0) continue;
-
-        const adjustment = type === 'REDEEM' ? points : -points;
-        const user = await transaction.user.update({
-          where: { id: userId },
-          data: {
-            loyaltyPoints:
-              adjustment > 0
-                ? { increment: adjustment }
-                : { decrement: -adjustment },
-          },
-          select: { loyaltyPoints: true },
-        });
-        balance = user.loyaltyPoints;
-        await transaction.loyaltyTransaction.create({
-          data: {
-            userId,
-            orderId,
-            type: 'ADJUST',
-            points: adjustment,
-            balanceAfter: balance,
-            description:
-              adjustment > 0
-                ? `Hoàn điểm từ đơn đã hủy ${orderCode}`
-                : `Thu hồi điểm từ đơn đã hủy ${orderCode}`,
-          },
-        });
-      }
-    }
-  }
-
-  private async restoreOrderStock(
-    transaction: Prisma.TransactionClient,
-    items: Array<{ productId: string; quantity: number }>,
-  ) {
-    for (const item of items) {
-      const restoredOutOfStock = await transaction.product.updateMany({
-        where: {
-          id: item.productId,
-          status: ProductStatus.OUT_OF_STOCK,
-        },
-        data: {
-          stockQuantity: { increment: item.quantity },
-          status: ProductStatus.AVAILABLE,
-        },
-      });
-      if (restoredOutOfStock.count === 0) {
-        await transaction.product.updateMany({
-          where: { id: item.productId },
-          data: { stockQuantity: { increment: item.quantity } },
-        });
-      }
-    }
-  }
-
-  private orderConfirmationSelect() {
-    return {
-      id: true,
-      orderCode: true,
-      userId: true,
-      status: true,
-      subtotal: true,
-      discountAmount: true,
-      totalAmount: true,
-      shippingAddress: true,
-      contactPhone: true,
-      note: true,
-      rejectionReason: true,
-      createdAt: true,
-      updatedAt: true,
-      orderItems: true,
-      payments: {
-        select: { id: true, amount: true, method: true, status: true },
-      },
-    } satisfies Prisma.OrderSelect;
   }
 
   private orderHistorySelect() {
@@ -1105,16 +708,5 @@ export class OrdersService {
         select: { status: true, failureReason: true },
       },
     } satisfies Prisma.OrderSelect;
-  }
-
-  private hasCancelledMockPayment(
-    orderStatus: OrderStatus,
-    payments: Array<{ status: PaymentStatus; failureReason: string | null }>,
-  ) {
-    return (
-      orderStatus === OrderStatus.CANCELLED &&
-      payments[0]?.status === PaymentStatus.CANCELLED &&
-      payments[0].failureReason === 'Mock payment cancelled'
-    );
   }
 }

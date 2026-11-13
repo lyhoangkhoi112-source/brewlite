@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -27,7 +26,7 @@ export class UserController {
   }
 
   @Get(':id')
-  findOne(@Param('id', new ParseUUIDPipe()) id: string) {
+  findOne(@Param('id') id: string) {
     return this.users.findOne(id);
   }
 
@@ -38,19 +37,19 @@ export class UserController {
 
   @Patch(':id')
   update(
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('id') id: string,
     @Body() input: UpdateManagedUserDto,
   ) {
     return this.users.update(id, input);
   }
 
   @Post(':id/unlock')
-  unlock(@Param('id', new ParseUUIDPipe()) id: string) {
+  unlock(@Param('id') id: string) {
     return this.users.unlock(id);
   }
 
   @Delete(':id')
-  softDelete(@Param('id', new ParseUUIDPipe()) id: string) {
+  softDelete(@Param('id') id: string) {
     return this.users.softDelete(id);
   }
 }

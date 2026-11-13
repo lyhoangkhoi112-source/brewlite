@@ -76,6 +76,13 @@ default `CUSTOMER` role, and does not include the password hash in its response.
 An email already in use returns `409 Conflict`. Database schema changes must be
 applied with `npx prisma migrate dev` from this directory.
 
+User IDs use `KH` for customers, `NV` for staff, and `QL` for managers,
+followed by an eight-digit sequence. New order codes use the `HD` prefix and
+the same sequence format. Soft-deleted records keep their codes; a code can be
+reused only after its record is hard-deleted. The migration converts existing
+user IDs and order codes, so users with existing login tokens must sign in
+again after deployment.
+
 ## Create an order
 
 Send a `POST` request to `/orders`. The API creates a new order for each
@@ -84,7 +91,7 @@ the quick-buy flow, or multiple items for cart checkout:
 
 ```json
 {
-  "userId": "01234567-89ab-4cde-8f01-23456789abcd",
+  "userId": "KH00000001",
   "note": "Ít ngọt, nhận tại quầy",
   "items": [
     {

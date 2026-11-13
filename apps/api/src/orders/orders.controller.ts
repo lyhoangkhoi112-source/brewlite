@@ -16,8 +16,6 @@ import {
   CreateOrderDto,
   GuestOrderAccessDto,
 } from './dto/create-order.dto.js';
-import { MockPaymentDto } from './dto/mock-payment.dto.js';
-import { RetryMockPaymentDto } from './dto/retry-mock-payment.dto.js';
 import {
   CancelStaffOrderDto,
   RejectStaffOrderDto,
@@ -42,62 +40,6 @@ export class OrdersController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.ordersService.createOrderForUser(input, request.user?.id);
-  }
-
-  @Post(':id/payments/:paymentId/mock')
-  @UseGuards(GuestOrJwtAuthGuard)
-  simulateMockPayment(
-    @Param('id', new ParseUUIDPipe()) orderId: string,
-    @Param('paymentId', new ParseUUIDPipe()) paymentId: string,
-    @Body() input: MockPaymentDto,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    return this.ordersService.simulateMockPayment(
-      orderId,
-      paymentId,
-      input,
-      request.user?.id,
-    );
-  }
-
-  @Get('mock-payments/:paymentId')
-  getMockPayment(@Param('paymentId', new ParseUUIDPipe()) paymentId: string) {
-    return this.ordersService.getMockPaymentDetails(paymentId);
-  }
-
-  @Post('mock-payments/:paymentId')
-  async simulateMockPaymentFromLink(
-    @Param('paymentId', new ParseUUIDPipe()) paymentId: string,
-    @Body() input: MockPaymentDto,
-  ) {
-    const order = await this.ordersService.simulateMockPaymentFromLink(
-      paymentId,
-      input,
-    );
-    return {
-      orderCode: order.orderCode,
-      status: order.status,
-      payments: order.payments.map(({ id, amount, method, status }) => ({
-        id,
-        amount,
-        method,
-        status,
-      })),
-    };
-  }
-
-  @Post(':id/payments/retry')
-  @UseGuards(GuestOrJwtAuthGuard)
-  retryMockPayment(
-    @Param('id', new ParseUUIDPipe()) orderId: string,
-    @Body() input: RetryMockPaymentDto,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    return this.ordersService.retryMockPayment(
-      orderId,
-      input,
-      request.user?.id,
-    );
   }
 
   @Get('mine')

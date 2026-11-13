@@ -13,10 +13,18 @@ describe('UserService', () => {
       create: vi.fn(),
       update: vi.fn(),
     },
+    $queryRaw: vi.fn(),
+    $transaction: vi.fn(),
   };
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$transaction.mockImplementation(
+      (callback: (transaction: typeof prisma) => Promise<unknown>) =>
+        callback(prisma),
+    );
     const module = await Test.createTestingModule({
       providers: [UserService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -52,12 +60,45 @@ describe('UserService', () => {
 
     const createArgs = prisma.user.create.mock.calls[0][0];
     expect(createArgs.data).toMatchObject({
+      id: 'KH00000001',
       fullName: 'Hoa Nguyen',
       email: 'hoa@example.com',
       role: UserRole.CUSTOMER,
     });
     expect(createArgs.data.passwordHash).not.toBe('password123');
     expect(createArgs.select.passwordHash).toBeUndefined();
+  });
+
+  it('uses the staff prefix for staff accounts', async () => {
+    prisma.user.create.mockResolvedValue({ id: 'NV00000001' });
+
+    await service.create({
+      fullName: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: UserRole.STAFF,
+    });
+
+    expect(prisma.user.create.mock.calls[0][0].data.id).toBe('NV00000001');
+  });
+
+  it('updates the ID prefix when the account role changes', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'KH00000001',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.ACTIVE,
+    });
+    prisma.user.update.mockResolvedValue({ id: 'NV00000001' });
+
+    await service.update('KH00000001', { role: UserRole.STAFF });
+
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'KH00000001' },
+        data: { id: 'NV00000001', role: UserRole.STAFF },
+      }),
+    );
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
   });
 
   it('unlocks blocked accounts and resets all lockout fields', async () => {

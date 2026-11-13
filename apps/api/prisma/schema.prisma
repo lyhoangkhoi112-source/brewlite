@@ -80,7 +80,7 @@ enum LoyaltyTransactionType {
 // ========================================
 
 model User {
-  id           String      @id @default(uuid())
+  id           String      @id
   fullName     String
   email        String      @unique
   passwordHash String

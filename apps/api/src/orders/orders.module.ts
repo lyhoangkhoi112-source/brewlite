@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { PaymentsModule } from '../payments/payments.module.js';
 import { OrdersController } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 import { GuestOrJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard.js';
@@ -10,6 +11,7 @@ import { StaffOrdersGuard } from './staff-orders.guard.js';
 @Module({
   imports: [
     PrismaModule,
+    PaymentsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

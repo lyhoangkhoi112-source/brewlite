@@ -6,11 +6,21 @@ import {
 import { Prisma, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  getNextSequentialCodeInTransaction,
+  type SequentialCodePrefix,
+} from '../prisma/sequential-code.js';
 import { CreateManagedUserDto } from './dto/create-managed-user.dto.js';
 import { FindManagedUsersDto } from './dto/find-managed-users.dto.js';
 import { UpdateManagedUserDto } from './dto/update-managed-user.dto.js';
 
 const PASSWORD_HASH_ROUNDS = 10;
+
+const userRolePrefixes: Record<UserRole, SequentialCodePrefix> = {
+  [UserRole.CUSTOMER]: 'KH',
+  [UserRole.STAFF]: 'NV',
+  [UserRole.MANAGER]: 'QL',
+};
 
 const managedUserSelect = {
   id: true,
@@ -76,15 +86,24 @@ export class UserService {
       PASSWORD_HASH_ROUNDS,
     );
     try {
-      return await this.prisma.user.create({
-        data: {
-          fullName: input.fullName.trim(),
-          email: input.email.trim().toLowerCase(),
-          passwordHash,
-          phone: input.phone?.trim() || null,
-          role: input.role ?? UserRole.CUSTOMER,
-        },
-        select: managedUserSelect,
+      const role = input.role ?? UserRole.CUSTOMER;
+      const prefix = userRolePrefixes[role];
+      return await this.prisma.$transaction(async (transaction) => {
+        const id = await getNextSequentialCodeInTransaction(
+          transaction,
+          prefix,
+        );
+        return transaction.user.create({
+          data: {
+            id,
+            fullName: input.fullName.trim(),
+            email: input.email.trim().toLowerCase(),
+            passwordHash,
+            phone: input.phone?.trim() || null,
+            role,
+          },
+          select: managedUserSelect,
+        });
       });
     } catch (error) {
       this.throwIfEmailConflict(error);
@@ -93,7 +112,8 @@ export class UserService {
   }
 
   async update(id: string, input: UpdateManagedUserDto) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
+    const newRole = input.role;
     const data: Prisma.UserUpdateInput = {
       ...(input.fullName !== undefined
         ? { fullName: input.fullName.trim() }
@@ -117,6 +137,20 @@ export class UserService {
     };
 
     try {
+      if (newRole !== undefined && newRole !== user.role) {
+        return await this.prisma.$transaction(async (transaction) => {
+          const newId = await getNextSequentialCodeInTransaction(
+            transaction,
+            userRolePrefixes[newRole],
+          );
+          return transaction.user.update({
+            where: { id },
+            data: { ...data, id: newId },
+            select: managedUserSelect,
+          });
+        });
+      }
+
       return await this.prisma.user.update({
         where: { id },
         data,
