@@ -1,3 +1,4 @@
+// File này chứa nghiệp vụ xử lý đơn hàng bao gồm: tạo đơn, kiểm tra tồn kho, thanh toán và điểm thưởng, tra cứu đơn, đổi trạng thái, hủy và xóa mềm
 import {
   BadRequestException,
   ConflictException,
@@ -20,7 +21,7 @@ import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto.js';
 import { MockPaymentDto } from './dto/mock-payment.dto.js';
 import { RetryMockPaymentDto } from './dto/retry-mock-payment.dto.js';
 
-type OrderRequestItem = Pick<
+type OrderRequestItem = Pick< // Chỉ lấy các trường cần thiết từ CreateOrderItemDto để xử lý đơn hàng
   CreateOrderItemDto,
   | 'productId'
   | 'quantity'
@@ -44,7 +45,7 @@ function getRequestItems(input: CreateOrderDto): OrderRequestItem[] {
     input.productId !== undefined &&
     input.quantity !== undefined
   ) {
-    return [{ productId: input.productId, quantity: input.quantity }];
+    return [{ productId: input.productId, quantity: input.quantity }]; // Trả về mảng chứa một đối tượng với productId và quantity từ input nếu không có items
   }
 
   throw new BadRequestException(
@@ -54,26 +55,37 @@ function getRequestItems(input: CreateOrderDto): OrderRequestItem[] {
 
 @Injectable()
 export class OrdersService {
+<<<<<<< Updated upstream
   constructor(private readonly prisma: PrismaService) {}
+=======
+  constructor(
+    private readonly prisma: PrismaService, // Hỗ trợ truy cập database
+    private readonly paymentsService: PaymentsService, // Hỗ trợ xử lý thanh toán cho đơn hàng
+  ) {}
+>>>>>>> Stashed changes
 
-  async createOrder(input: CreateOrderDto) {
+  async createOrder(input: CreateOrderDto) { // Tạo đơn hàng cho khách hàng vãng lai nhờ vào việc dùng id định dạng undefine
     return this.createOrderForUser(input, undefined);
   }
 
-  async createOrderForUser(
+  async createOrderForUser( // Tạo đơn hàng cho người dùng đã xác thực hoặc khách vãng lai
     input: CreateOrderDto,
-    authenticatedUserId?: string,
+    authenticatedUserId?: string, // Nếu không có thì coi là khách vãng lai
   ) {
-    const redeemPoints = input.redeemPoints ?? 0;
+    const redeemPoints = input.redeemPoints ?? 0; // Lấy điểm khách hàng muốn sử dụng, mặc định là 0 nếu không có
     if (!authenticatedUserId && redeemPoints > 0) {
       throw new ForbiddenException('Đăng nhập để sử dụng điểm khách hàng');
     }
+<<<<<<< Updated upstream
     if (input.paymentMethod && process.env.NODE_ENV === 'production') {
+=======
+    if (input.paymentMethod && !this.paymentsService.isMockPaymentsEnabled()) { // Nếu có phương thức thanh toán nhưng mock payments bị tắt thì không cho phép request tiếp tục với phương thức đó
+>>>>>>> Stashed changes
       throw new ForbiddenException('Mock payments are disabled in production');
     }
 
     const requestItems = getRequestItems(input);
-    let userId: string | null = null;
+    let userId: string | null = null; // khai báo biến userId có dạng string hoặc null và giá trị ban đầu là null
     if (authenticatedUserId) {
       const user = await this.prisma.user.findUnique({
         where: { id: authenticatedUserId },
@@ -90,13 +102,13 @@ export class OrdersService {
 
     const shippingAddress = input.shippingAddress.trim();
     const contactPhone = input.contactPhone.trim();
-    if (!shippingAddress || !contactPhone) {
+    if (!shippingAddress || !contactPhone) { // Kiểm tra xem địa chỉ giao hàng và số điện thoại có bị bỏ trống không
       throw new BadRequestException(
         'Vui lòng cung cấp địa chỉ giao hàng và số điện thoại',
       );
     }
 
-    const requestedQuantities = new Map<string, number>();
+    const requestedQuantities = new Map<string, number>(); // Map có công dụng lưu trữ số lượng sản phẩm được yêu cầu theo productId
     for (const item of requestItems) {
       requestedQuantities.set(
         item.productId,
@@ -104,28 +116,33 @@ export class OrdersService {
       );
     }
 
-    const guestAccessToken = userId ? null : randomBytes(32).toString('hex');
+    const guestAccessToken = userId ? null : randomBytes(32).toString('hex'); // Nếu có userId thì không cần guest token, còn không thì tạo token ngẫu nhiên cho khách hàng vãng lai
     const guestAccessTokenHash = guestAccessToken
+<<<<<<< Updated upstream
       ? this.hashGuestToken(guestAccessToken)
       : null;
+=======
+      ? hashGuestAccessToken(guestAccessToken)
+      : null; // Bây giờ kiểm tra xem có cần hash guest token hay không.
+>>>>>>> Stashed changes
 
-    const order = await this.prisma.$transaction(async (transaction) => {
-      const productIds = [...requestedQuantities.keys()];
+    const order = await this.prisma.$transaction(async (transaction) => { // Bắt đầu một giao dịch để đảm bảo tính toàn vẹn của đơn hàng và số lượng sản phẩm được cập nhật chính xác
+      const productIds = [...requestedQuantities.keys()]; // Lấy danh sách productId từ các sản phẩm được yêu cầu trong đơn hàng
       const products = await Promise.all(
         productIds.map((productId) =>
           transaction.product.findUnique({ where: { id: productId } }),
         ),
-      );
+      ); // Lấy thông tin chi tiết của từng sản phẩm từ cơ sở dữ liệu dựa trên productId
       const productsById = new Map(
         productIds.map((productId, index) => [productId, products[index]]),
-      );
+      ); // Gộp productId với thông tin chi tiết của sản phẩm thành một Map để dễ tra cứu sau này
 
       for (const [productId, quantity] of requestedQuantities) {
         const product = productsById.get(productId);
-        if (!product) {
+        if (!product) { // Kiểm tra sản phẩm có tồn tại hay không
           throw new NotFoundException('Không tìm thấy sản phẩm');
         }
-        if (
+        if ( // Kiểm tra sản phẩm có đủ điều kiện để đặt hàng hay không (còn bán và đủ số lượng yêu cầu)
           product.status !== ProductStatus.AVAILABLE ||
           product.stockQuantity < quantity
         ) {
@@ -140,15 +157,16 @@ export class OrdersService {
           where: {
             id: productId,
             status: ProductStatus.AVAILABLE,
-            stockQuantity: { gte: quantity },
+            stockQuantity: { gte: quantity }, // gte: greater than or equal to - lớn hơn hoặc bằng, đảm bảo số lượng sản phẩm còn đủ để đặt hàng
           },
-          data: {
-            stockQuantity: { decrement: quantity },
+          data: { // Trừ tồn kho  
+            stockQuantity: { decrement: quantity }, // Trừ số lượng tồn kho của sản phẩm
             ...(quantity === productsById.get(productId)?.stockQuantity
               ? { status: ProductStatus.OUT_OF_STOCK }
-              : {}),
+              : {}), // Nếu số lượng tồn kho đặt bằng đúng số lượng tồn kho trước đó thì cập nhật trạng thái hết hàng còn không thì giữ nguyên  
           },
-        });
+        }); // Nếu thành công, sẽ có một record được cập nhật. 
+        // Còn nếu thất bại thì sẽ không có record nào được cập nhật dẫn đến khi lấy .count sẽ cho kết quả bằng 0, sẽ ném ra ngoại lệ UnprocessableEntityException
         if (result.count !== 1) {
           throw new UnprocessableEntityException(
             'Sản phẩm hiện không đủ số lượng đặt',
